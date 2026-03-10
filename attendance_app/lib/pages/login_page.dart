@@ -19,7 +19,7 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> login() async {
     if (userController.text.isEmpty || passController.text.isEmpty) {
-      _showError("Please Fill in all fields");
+      _showError("Please fill in all fields");
       return;
     }
 
