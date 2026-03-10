@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../models/employee.dart';
 import '../screens/verification_page.dart';
 
@@ -14,9 +17,9 @@ class _LoginPageState extends State<LoginPage> {
   final passController = TextEditingController();
   bool _isLoading = false;
 
-  static const Color primaryColor = Color(0xFF6C63FF);
   static const Color backgroundColor = Color(0xFFF8FAFC);
 
+  /// ✅ FIREBASE LOGIN
   Future<void> login() async {
     if (userController.text.isEmpty || passController.text.isEmpty) {
       _showError("Please fill in all fields");
@@ -25,26 +28,60 @@ class _LoginPageState extends State<LoginPage> {
 
     setState(() => _isLoading = true);
 
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      /// 1️⃣ Login using Firebase Authentication
+      UserCredential credential =
+          await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: userController.text.trim(),
+        password: passController.text.trim(),
+      );
 
-    if (userController.text == "employee" && passController.text == "1234") {
-      Employee employee = Employee(name: "Juan Dela Cruz");
+      String uid = credential.user!.uid;
+
+      /// 2️⃣ Get employee info from Firestore
+      DocumentSnapshot employeeDoc = await FirebaseFirestore.instance
+          .collection("employees")
+          .doc(uid)
+          .get();
+
+      if (!employeeDoc.exists) {
+        throw Exception("Employee profile not found");
+      }
+
+      Employee employee = Employee(
+        name: employeeDoc["name"],
+      );
 
       if (!mounted) return;
-      
+
+      /// 3️⃣ Navigate to Verification Page
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          // Corrected: Use single underscores for unused parameters
-          pageBuilder: (_, _, _) => VerificationPage(employee: employee),
-          transitionsBuilder: (context, anim, secondaryAnim, child) => 
+          pageBuilder: (_, _, _) =>
+              VerificationPage(employee: employee),
+          transitionsBuilder: (context, anim, secondaryAnim, child) =>
               FadeTransition(opacity: anim, child: child),
         ),
       );
-    } else {
-      if (!mounted) return;
+    } on FirebaseAuthException catch (e) {
+      String message = "Login failed";
+
+      if (e.code == 'user-not-found') {
+        message = "User not found";
+      } else if (e.code == 'wrong-password') {
+        message = "Wrong password";
+      } else if (e.code == 'invalid-email') {
+        message = "Invalid email";
+      }
+
+      _showError(message);
+    } catch (e) {
+      _showError(e.toString());
+    }
+
+    if (mounted) {
       setState(() => _isLoading = false);
-      _showError("Invalid login credentials");
     }
   }
 
@@ -54,7 +91,8 @@ class _LoginPageState extends State<LoginPage> {
         content: Text(message),
         backgroundColor: Colors.redAccent,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
@@ -68,38 +106,23 @@ class _LoginPageState extends State<LoginPage> {
           padding: const EdgeInsets.symmetric(horizontal: 30),
           child: Column(
             children: [
-              TweenAnimationBuilder<double>(
-                duration: const Duration(milliseconds: 800),
-                tween: Tween(begin: 0.0, end: 1.0),
-                builder: (context, value, child) {
-                  return Opacity(
-                    opacity: value,
-                    child: Transform.translate(
-                      offset: Offset(0, 20 * (1 - value)),
-                      child: child,
-                    ),
-                  );
-                },
-                child: Column(
-                  children: [
-                    Image.asset('assets/icon/app_icon.png', width: 100),
-                    const SizedBox(height: 15),
-                    const Text(
-                      "Welcome Back",
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                    const Text(
-                      "Sign in to continue",
-                      style: TextStyle(color: Colors.blueGrey, fontSize: 14),
-                    ),
-                  ],
+              Image.asset('assets/icon/app_icon.png', width: 100),
+              const SizedBox(height: 15),
+              const Text(
+                "Welcome Back",
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF1E293B),
                 ),
               ),
+              const Text(
+                "Sign in to continue",
+                style: TextStyle(color: Colors.blueGrey, fontSize: 14),
+              ),
               const SizedBox(height: 40),
+
+              /// LOGIN CARD
               Container(
                 padding: const EdgeInsets.all(30),
                 decoration: BoxDecoration(
@@ -116,11 +139,11 @@ class _LoginPageState extends State<LoginPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildLabel("Username"),
+                    _buildLabel("Email"),
                     const SizedBox(height: 8),
                     _buildTextField(
                       controller: userController,
-                      hint: "Enter your username",
+                      hint: "Enter email",
                       icon: Icons.person_outline_rounded,
                     ),
                     const SizedBox(height: 20),
@@ -132,21 +155,7 @@ class _LoginPageState extends State<LoginPage> {
                       icon: Icons.lock_outline_rounded,
                       isPassword: true,
                     ),
-                    const SizedBox(height: 10),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () {},
-                        child: const Text(
-                          "Forgot Password?",
-                          style: TextStyle(
-                              color: primaryColor, 
-                              fontWeight: FontWeight.w600, 
-                              fontSize: 13),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 25),
                     SizedBox(
                       width: double.infinity,
                       height: 55,
@@ -155,33 +164,23 @@ class _LoginPageState extends State<LoginPage> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF1E293B),
                           foregroundColor: Colors.white,
-                          elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
                         child: _isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                    color: Colors.white, strokeWidth: 2),
-                              )
+                            ? const CircularProgressIndicator(
+                                color: Colors.white)
                             : const Text(
                                 "SIGN IN",
                                 style: TextStyle(
-                                    fontWeight: FontWeight.bold, 
+                                    fontWeight: FontWeight.bold,
                                     letterSpacing: 1.1),
                               ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 30),
-              const Text(
-                "v1.0.0 - Accounts are provided by Admin",
-                style: TextStyle(color: Colors.blueGrey, fontSize: 11),
               ),
             ],
           ),
@@ -190,16 +189,16 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildLabel(String label) {
-    return Text(
-      label,
-      style: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w700,
-        color: Color(0xFF1E293B),
-      ),
-    );
-  }
+ Widget _buildLabel(String label) {
+  return Text(
+    label,
+    style: const TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF1E293B),
+    ),
+  );
+ }
 
   Widget _buildTextField({
     required TextEditingController controller,
@@ -212,18 +211,11 @@ class _LoginPageState extends State<LoginPage> {
       obscureText: isPassword,
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Colors.black26, fontSize: 14),
-        prefixIcon: Icon(icon, color: Colors.blueGrey.shade300, size: 20),
+        prefixIcon: Icon(icon),
         filled: true,
         fillColor: const Color(0xFFF8FAFC),
-        contentPadding: const EdgeInsets.symmetric(vertical: 18),
-        enabledBorder: OutlineInputBorder(
+        border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.blueGrey.shade50),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
-          borderSide: const BorderSide(color: primaryColor, width: 1.5),
         ),
       ),
     );
