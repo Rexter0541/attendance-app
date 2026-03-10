@@ -17,6 +17,24 @@ class AnnouncementsPage extends StatelessWidget {
       "content": "Please review the updated holiday leave policy in the employee handbook. Effective immediately.",
       "type": "General"
     },
+    {
+      "title": "Team Building Event",
+      "date": "Oct 20, 2026",
+      "content": "Join us for a fun team-building event at the park this Friday. Lunch will be provided.",
+      "type": "General"
+    },
+    {
+      "title": "Performance Review Deadline",
+      "date": "Oct 18, 2026",
+      "content": "All employees are reminded to complete their self-assessment for the quarterly performance review by October 25th.",
+      "type": "Urgent"
+    },
+    {
+      "title": "Office Closure",
+      "date": "Oct 15, 2026",
+      "content": "The office will be closed on November 1st for a national holiday.",
+      "type": "General"
+    },
   ];
 
   @override
