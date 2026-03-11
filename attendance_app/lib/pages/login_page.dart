@@ -247,15 +247,15 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Widget _buildLabel(String label) {
-    return const Text(
-      "Email",
-      style: TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w700,
-        color: Color(0xFF1E293B),
-      ),
-    );
-  }
+  return Text(
+    label, // ✅ use passed value
+    style: const TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w700,
+      color: Color(0xFF1E293B),
+    ),
+  );
+}
 
   Widget _buildTextField({
     required TextEditingController controller,
