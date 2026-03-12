@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/employee.dart';
 import 'login_page.dart';
-import 'timein_page.dart';
 import '../pages/attendance_log.dart';
 import '../pages/payroll_page.dart';
 import '../pages/leave_page.dart';
 import '../pages/profile_page.dart';
 import '../pages/announcements_page.dart';
 import '../pages/events_page.dart';
+import '../pages/timein_page.dart';
 
 class HomePage extends StatefulWidget {
   final Employee employee;
@@ -21,8 +22,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int currentIndex = 0;
   late Timer _statusTimer;
-  
-  bool isTimedIn = false; 
+  bool isTimedIn = false;
   String currentStatus = "Not Timed In";
   Color statusColor = Colors.grey;
 
@@ -33,14 +33,18 @@ class _HomePageState extends State<HomePage> {
   static const Color lateColor = Color(0xFFFFAB40);
   static const Color leaveColor = Color(0xFFBA68C8);
 
+  // Recent Activities
+  List<Map<String, dynamic>> recentActivities = [];
+  bool isLoadingActivities = true;
+
   @override
   void initState() {
     super.initState();
     _updateTimeStatus();
-    // Refresh status every 30 seconds to keep "Early/Present/Late" accurate
     _statusTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) _updateTimeStatus();
     });
+    fetchRecentActivities(); // fetch Firestore logs
   }
 
   @override
@@ -97,6 +101,35 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  // Fetch recent attendance logs from Firestore
+  void fetchRecentActivities() async {
+    setState(() => isLoadingActivities = true);
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('attendance')
+        .orderBy('timestamp', descending: true)
+        .limit(5)
+        .get();
+
+    recentActivities = snapshot.docs.map((doc) {
+      final ts = doc['timestamp'] as Timestamp?;
+      final timeStr = ts != null
+          ? "${ts.toDate().hour.toString().padLeft(2, '0')}:${ts.toDate().minute.toString().padLeft(2, '0')}"
+          : "--:--";
+      final dateStr = ts != null
+          ? "${ts.toDate().month.toString().padLeft(2, '0')}-${ts.toDate().day.toString().padLeft(2, '0')}-${ts.toDate().year}"
+          : "";
+
+      return {
+        'name': doc['employeeName'] ?? "Unknown",
+        'time': timeStr,
+        'date': dateStr,
+      };
+    }).toList();
+
+    setState(() => isLoadingActivities = false);
+  }
+
   void _showLogoutDialog() {
     showDialog(
       context: context,
@@ -112,7 +145,7 @@ class _HomePageState extends State<HomePage> {
           ),
           content: const Text(
             "You will need to login again to access your dashboard.",
-            textAlign: TextAlign.center, // FIXED: Changed to TextAlign.center
+            textAlign: TextAlign.center,
             style: TextStyle(color: Colors.grey),
           ),
           actionsAlignment: MainAxisAlignment.center,
@@ -123,15 +156,10 @@ class _HomePageState extends State<HomePage> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: absentColor, 
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-              ),
+                  backgroundColor: absentColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               onPressed: () {
-                Navigator.pushAndRemoveUntil(
-                  context, 
-                  MaterialPageRoute(builder: (_) => const LoginPage()), 
-                  (route) => false
-                );
+                Navigator.pushAndRemoveUntil(context,
+                    MaterialPageRoute(builder: (_) => const LoginPage()), (route) => false);
               },
               child: const Text("Logout", style: TextStyle(color: Colors.white)),
             ),
@@ -148,19 +176,17 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // --- Header & Status ---
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Employee: ${widget.employee.name}", 
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const Text("Location: Company A", 
-                      style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  Text("Employee: ${widget.employee.name}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Text("Location: Company A", style: TextStyle(color: Colors.grey, fontSize: 13)),
                 ],
               ),
-              // --- Status Badge ---
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
@@ -172,14 +198,15 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     CircleAvatar(radius: 4, backgroundColor: statusColor),
                     const SizedBox(width: 6),
-                    Text(currentStatus, 
-                        style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
+                    Text(currentStatus, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
                   ],
                 ),
               )
             ],
           ),
           const SizedBox(height: 20),
+
+          // --- Stats Cards ---
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -195,22 +222,35 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           const SizedBox(height: 20),
+
           _buildWorkingHourCard(),
           const SizedBox(height: 20),
+
+          // --- Small Info Cards ---
           Row(
             children: [
-              Expanded(child: _buildSmallInfoCard("Announcements", Icons.campaign_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AnnouncementsPage())))),
+              Expanded(
+                  child: _buildSmallInfoCard(
+                      "Announcements", Icons.campaign_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AnnouncementsPage())))),
               const SizedBox(width: 15),
-              Expanded(child: _buildSmallInfoCard("Events", Icons.event_note_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EventsPage())))),
+              Expanded(
+                  child: _buildSmallInfoCard(
+                      "Events", Icons.event_note_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EventsPage())))),
             ],
           ),
           const SizedBox(height: 25),
+
           const Text("Recent Activity", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          _buildActivityItem("Krestyan Stick", "08:05", "03-03-2026"),
-          _buildActivityItem("Rexter Balmonte", "08:45", "03-03-2026"),
-          _buildActivityItem("Raymond Gallego", "07:50", "03-03-2026"),
-          _buildActivityItem("Juan Dela Cruz", "--:--", "03-03-2026"), 
+
+          // --- Dynamic Recent Activity ---
+          isLoadingActivities
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+                  children: recentActivities.map((activity) {
+                    return _buildActivityItem(activity['name'], activity['time'], activity['date']);
+                  }).toList(),
+                ),
         ],
       ),
     );
@@ -238,7 +278,10 @@ class _HomePageState extends State<HomePage> {
   Widget _buildWorkingHourCard() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10)]),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10)]),
       child: Column(
         children: [
           const Row(children: [Icon(Icons.hourglass_bottom_rounded, size: 20), SizedBox(width: 10), Text("Working Hour Details", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))]),
@@ -263,7 +306,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildTimeIndicator(String label, String value, Color color) {
-    return Row(children: [CircleAvatar(radius: 5, backgroundColor: color), const SizedBox(width: 6), Text("$label: ", style: const TextStyle(fontSize: 12, color: Colors.black54)), Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))]);
+    return Row(children: [
+      CircleAvatar(radius: 5, backgroundColor: color),
+      const SizedBox(width: 6),
+      Text("$label: ", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+      Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))
+    ]);
   }
 
   Widget _buildSmallInfoCard(String title, IconData icon, VoidCallback onTap) {
@@ -300,19 +348,14 @@ class _HomePageState extends State<HomePage> {
           CircleAvatar(radius: 20, backgroundColor: color.withValues(alpha: 0.1), child: Icon(Icons.person_outline, color: color, size: 20)),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, 
-              children: [
-                Text(name, style: const TextStyle(fontWeight: FontWeight.bold)), 
-                Text(isAbsent ? "Date: $date" : "In: $time - $date", style: const TextStyle(fontSize: 11, color: Colors.grey))
-              ]
-            )
-          ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(isAbsent ? "Date: $date" : "In: $time - $date", style: const TextStyle(fontSize: 11, color: Colors.grey))
+          ])),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6), 
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)), 
-            child: Text(statusData['text'], style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))
-          ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+              child: Text(statusData['text'], style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))),
         ],
       ),
     );
@@ -320,12 +363,18 @@ class _HomePageState extends State<HomePage> {
 
   Widget getSelectedPage() {
     switch (currentIndex) {
-      case 0: return dashboardBody();
-      case 1: return const PayrollPage();
-      case 2: return const LeavePage();
-      case 3: return const AttendanceLogPage();
-      case 4: return const ProfilePage();
-      default: return dashboardBody();
+      case 0:
+        return dashboardBody();
+      case 1:
+        return const PayrollPage();
+      case 2:
+        return const LeavePage();
+      case 3:
+        return const AttendanceLogPage();
+      case 4:
+        return const ProfilePage();
+      default:
+        return dashboardBody();
     }
   }
 
@@ -352,14 +401,12 @@ class _HomePageState extends State<HomePage> {
         shape: const CircleBorder(),
         onPressed: () async {
           final result = await Navigator.push(
-            context, 
-            MaterialPageRoute(builder: (context) => TimeInPage(employee: widget.employee))
-          );
-          
+              context, MaterialPageRoute(builder: (context) => TimeInPage(employee: widget.employee)));
           if (result == true) {
             setState(() {
               isTimedIn = true;
               _updateTimeStatus();
+              fetchRecentActivities(); // refresh after time-in
             });
           }
         },
@@ -380,7 +427,7 @@ class _HomePageState extends State<HomePage> {
           BottomNavigationBarItem(icon: Icon(Icons.history_outlined), label: "Logs"),
           BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Profile"),
         ],
-      ), 
+      ),
     );
   }
 }

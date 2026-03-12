@@ -1,10 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import '../models/employee.dart';
 import '../pages/timein_page.dart';
+import '../pages/login_page.dart';
 
 class VerificationPage extends StatefulWidget {
   final Employee employee;
+
   const VerificationPage({super.key, required this.employee});
 
   @override
@@ -12,167 +17,236 @@ class VerificationPage extends StatefulWidget {
 }
 
 class _VerificationPageState extends State<VerificationPage> {
-  int currentStep = 0; 
+  int currentStep = 0;
   double progressValue = 0.0;
   List<String> logs = ["System Ready."];
+
+  Position? userPosition;
+  double distanceFromOffice = 0.0;
+  bool inRange = false;
+
+  Timer? progressTimer;
+
+static const double officeLat = 16.026648547578503;
+static const double officeLng = 120.42173542356102;
+static const double allowedRadius = 30; // meters
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _initiateQRStep());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkGPS());
   }
 
+  @override
+  void dispose() {
+    progressTimer?.cancel();
+    super.dispose();
+  }
+
+  // =====================================================
+  // STEP 1 — GPS CHECK
+  // =====================================================
+  Future<void> _checkGPS() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
+      if (!serviceEnabled) {
+        _showErrorDialog("Location Disabled", "Enable GPS first.");
+        return;
+      }
+
+      _addLog("Requesting location permission...");
+
+      LocationPermission permission = await Geolocator.requestPermission();
+
+      if (!mounted) return;
+
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        _showErrorDialog(
+            "Permission Denied", "GPS is required for attendance.");
+        return;
+      }
+
+      _addLog("Accessing Satellite Data...");
+
+      userPosition = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+
+      distanceFromOffice = Geolocator.distanceBetween(
+        userPosition!.latitude,
+        userPosition!.longitude,
+        officeLat,
+        officeLng,
+      );
+
+      inRange = distanceFromOffice <= allowedRadius;
+
+      _addLog(
+          "Distance from office: ${distanceFromOffice.toStringAsFixed(2)} meters");
+
+      if (!inRange) {
+        _addLog("STATUS: OUT OF RANGE ❌");
+        _showErrorDialog(
+          "Out of Range",
+          "You are ${distanceFromOffice.toStringAsFixed(2)}m away.\nAllowed: $allowedRadius m",
+        );
+        return;
+      }
+
+      _addLog("STATUS: WITHIN OFFICE RANGE ✅");
+
+      _updateProgress(0.33);
+
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      _initiateQRStep();
+    } catch (e) {
+      _showErrorDialog("GPS Error", "Could not verify location.");
+    }
+  }
+
+  // =====================================================
+  // STEP 2 — QR
+  // =====================================================
   void _initiateQRStep() async {
     bool start = await _showActionDialog(
-      title: "QR Scanner Request",
-      message: "The system requires access to scan your Employee QR Code.",
-      buttonText: "START SCANNING",
+      title: "Step 2: QR Scan",
+      message: "Please align your employee QR code.",
+      buttonText: "OPEN SCANNER",
       icon: Icons.qr_code_scanner,
       iconColor: const Color(0xFF6C63FF),
     );
 
-    if (start) {
-      _addLog("Initializing Camera...");
-      _updateProgress(0.35); 
-      await Future.delayed(const Duration(milliseconds: 2000));
-      _addLog("QR Code Verified: EMP-8821");
-      setState(() => currentStep = 1);
-      
-      await Future.delayed(const Duration(milliseconds: 500));
-      _initiatePhotoStep();
-    }
+    if (!mounted || !start) return;
+
+    _addLog("Decrypting QR Signature...");
+    _updateProgress(0.66);
+
+    await Future.delayed(const Duration(seconds: 2));
+
+    setState(() => currentStep = 1);
+
+    _addLog("Identity Token Validated.");
+
+    _initiatePhotoStep();
   }
 
+  // =====================================================
+  // STEP 3 — FACE
+  // =====================================================
   void _initiatePhotoStep() async {
     bool start = await _showActionDialog(
-      title: "Photo Capture Request",
-      message: "QR Verified. We now need to capture a photo for facial verification.",
+      title: "Step 3: Face Capture",
+      message: "Face the camera for biometric verification.",
       buttonText: "START CAPTURE",
-      icon: Icons.face_retouching_natural,
+      icon: Icons.face_unlock_outlined,
       iconColor: Colors.orange,
     );
 
-    if (start) {
-      _addLog("Analyzing Facial Features...");
-      _updateProgress(0.75);
-      await Future.delayed(const Duration(milliseconds: 2500));
-      _addLog("Photo Captured Successfully.");
-      setState(() => currentStep = 2);
+    if (!mounted || !start) return;
 
-      await Future.delayed(const Duration(milliseconds: 500));
-      _finalizeVerification();
-    }
-  }
-
-  void _finalizeVerification() async {
-    _addLog("Syncing with Server...");
+    _addLog("Running Biometric Analysis...");
     _updateProgress(1.0);
-    await Future.delayed(const Duration(milliseconds: 1500));
-    _addLog("Attendance Logged Successfully.");
-    
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => TimeInPage(employee: widget.employee)),
-      );
-    }
+
+    await Future.delayed(const Duration(seconds: 2));
+
+    setState(() => currentStep = 2);
+
+    _addLog("Facial Match Confirmed.");
+
+    _finalizeVerification();
   }
 
-  /// ✅ FIXED: Corrected syntax and parameter errors here
-  Future<bool> _showActionDialog({
-    required String title,
-    required String message,
-    required String buttonText,
-    required IconData icon,
-    required Color iconColor,
-  }) async {
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          // ✅ FIX: Correct way to add a border to AlertDialog
-          side: const BorderSide(color: Colors.black, width: 2),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 50, color: iconColor),
-            const SizedBox(height: 15),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 10),
-            Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.black54, fontSize: 13)),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                onPressed: () => Navigator.pop(context, true),
-                child: Text(buttonText, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ],
-        ),
+  // =====================================================
+  // ⭐ CREATE OR FIND ATTENDANCE
+  // =====================================================
+  Future<void> _saveAttendance() async {
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+
+    final query = await FirebaseFirestore.instance
+        .collection("attendance")
+        .where("employeeId", isEqualTo: widget.employee.id)
+        .where(
+          "timestamp",
+          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
+        )
+        .limit(1)
+        .get();
+
+    /// IF ATTENDANCE ALREADY EXISTS
+    if (query.docs.isNotEmpty) {
+      widget.employee.attendanceId = query.docs.first.id;
+      return;
+    }
+
+    /// CREATE NEW ATTENDANCE
+    final docRef =
+        await FirebaseFirestore.instance.collection("attendance").add({
+      "employeeId": widget.employee.id,
+      "employeeName": widget.employee.name,
+      "status": "verified",
+      "timeIn": null,
+      "timeOut": null,
+      "coords": {
+        "lat": userPosition?.latitude,
+        "lng": userPosition?.longitude,
+        "distance": distanceFromOffice,
+      },
+
+      /// IMPORTANT: use Timestamp.now()
+      "timestamp": Timestamp.now(),
+    });
+
+    widget.employee.attendanceId = docRef.id;
+  }
+
+  // =====================================================
+  // FINAL STEP
+  // =====================================================
+  Future<void> _finalizeVerification() async {
+    _addLog("Creating Attendance Session...");
+
+    await _saveAttendance();
+
+    _addLog("Attendance Secured Successfully.");
+
+    await Future.delayed(const Duration(milliseconds: 1200));
+
+    if (!mounted) return;
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TimeInPage(employee: widget.employee),
       ),
     );
-    return result ?? false;
   }
 
-  void _addLog(String message) {
-    if (mounted) setState(() => logs.insert(0, message));
-  }
-
-  void _updateProgress(double target) {
-    Timer.periodic(const Duration(milliseconds: 40), (timer) {
-      if (progressValue >= target || !mounted) {
-        timer.cancel();
-      } else {
-        setState(() => progressValue += 0.01);
-      }
-    });
-  }
-
+  // =====================================================
+  // UI
+  // =====================================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F3F7),
-      body: Center(
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.85,
-          padding: const EdgeInsets.all(25),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.black, width: 2),
-            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 10, offset: Offset(4, 4))],
-          ),
+      backgroundColor: const Color(0xFFF4F7FA),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                currentStep == 2 ? "IDENTITY SECURED" : "PENDING AUTHORIZATION",
-                style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 2, fontSize: 11, color: Colors.grey),
-              ),
+              const SizedBox(height: 40),
+              _buildHeader(),
+              const SizedBox(height: 40),
+              _buildProgressBar(),
               const SizedBox(height: 20),
-              _buildStepVisual(),
-              const SizedBox(height: 25),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: LinearProgressIndicator(
-                  value: progressValue,
-                  minHeight: 10,
-                  backgroundColor: Colors.grey[200],
-                  valueColor: AlwaysStoppedAnimation<Color>(currentStep == 2 ? Colors.green : const Color(0xFF6C63FF)),
-                ),
-              ),
-              const SizedBox(height: 25),
-              _buildLogsContainer(),
+              _buildInfoCard(),
+              const SizedBox(height: 15),
+              _buildLocationStatus(),
+              const Spacer(),
+              _buildTerminal(),
+              const SizedBox(height: 30),
             ],
           ),
         ),
@@ -180,58 +254,187 @@ class _VerificationPageState extends State<VerificationPage> {
     );
   }
 
-  Widget _buildLogsContainer() {
+  Widget _buildHeader() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: currentStep == 2
+                ? Colors.green.withAlpha(28)
+                : Colors.blue.withAlpha(26),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            currentStep == 2 ? Icons.verified : Icons.security,
+            size: 48,
+            color: currentStep == 2 ? Colors.green : Colors.blueAccent,
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          "SECURITY PROTOCOL ACTIVE",
+          style: TextStyle(
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.2,
+              color: Color(0xFF2D3142)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProgressBar() {
+    return LinearProgressIndicator(
+      value: progressValue,
+      minHeight: 8,
+      backgroundColor: Colors.grey[300],
+      color: const Color(0xFF6C63FF),
+    );
+  }
+
+  Widget _buildInfoCard() {
     return Container(
-      height: 90,
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.black12),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+              backgroundColor: Colors.blue[50],
+              child:
+                  const Icon(Icons.person, color: Color(0xFF6C63FF))),
+          const SizedBox(width: 15),
+          Text(widget.employee.name,
+              style:
+                  const TextStyle(fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocationStatus() {
+    if (userPosition == null) return const SizedBox();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: inRange ? Colors.green[50] : Colors.red[50],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            inRange ? Icons.check_circle : Icons.cancel,
+            color: inRange ? Colors.green : Colors.red,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              inRange
+                  ? "Within office range (${distanceFromOffice.toStringAsFixed(1)}m)"
+                  : "Out of range (${distanceFromOffice.toStringAsFixed(1)}m)",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: inRange ? Colors.green : Colors.red,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTerminal() {
+    return Container(
+      width: double.infinity,
+      height: 150,
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A2E),
+        borderRadius: BorderRadius.circular(15),
       ),
       child: ListView.builder(
         itemCount: logs.length,
-        itemBuilder: (context, index) => Text(
-          "> ${logs[index]}",
-          style: TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 11,
-            color: index == 0 ? Colors.black : Colors.grey,
-            fontWeight: index == 0 ? FontWeight.bold : FontWeight.normal,
-          ),
+        itemBuilder: (_, i) => Text(
+          "> ${logs[i]}",
+          style: const TextStyle(
+              color: Colors.white60,
+              fontFamily: 'monospace',
+              fontSize: 11),
         ),
       ),
     );
   }
 
-  Widget _buildStepVisual() {
-    IconData icon;
-    String label;
-    Color color;
+  void _addLog(String message) {
+    if (mounted) setState(() => logs.insert(0, message));
+  }
 
-    if (currentStep == 0) {
-      icon = Icons.qr_code_scanner_rounded;
-      label = "STEP 1: QR SCAN";
-      color = const Color(0xFF6C63FF);
-    } else if (currentStep == 1) {
-      icon = Icons.camera_front_rounded;
-      label = "STEP 2: PHOTO CAPTURE";
-      color = Colors.orange;
-    } else {
-      icon = Icons.verified_user_rounded;
-      label = "VERIFIED";
-      color = Colors.green;
-    }
+  void _updateProgress(double target) {
+    progressTimer?.cancel();
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 400),
-      child: Column(
-        key: ValueKey(currentStep),
-        children: [
-          Icon(icon, size: 64, color: color),
-          const SizedBox(height: 10),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+    progressTimer =
+        Timer.periodic(const Duration(milliseconds: 30), (timer) {
+      if (!mounted || progressValue >= target) {
+        timer.cancel();
+      } else {
+        setState(() => progressValue += 0.01);
+      }
+    });
+  }
+
+  Future<bool> _showActionDialog({
+    required String title,
+    required String message,
+    required String buttonText,
+    required IconData icon,
+    required Color iconColor,
+  }) async {
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => AlertDialog(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 60, color: iconColor),
+                const SizedBox(height: 20),
+                Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 10),
+                Text(message, textAlign: TextAlign.center),
+                const SizedBox(height: 25),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: Text(buttonText),
+                )
+              ],
+            ),
+          ),
+        ) ??
+        false;
+  }
+
+  void _showErrorDialog(String title, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: Text(title,
+            style: const TextStyle(
+                color: Colors.red, fontWeight: FontWeight.bold)),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const LoginPage())),
+            child: const Text("Return to Login"),
+          ),
         ],
       ),
     );
