@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'screens/splash_location.dart';
+import 'screens/splash_anim.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,7 +22,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Workforce Attendance',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home: const SplashLocationPage(),
+      home: const SplashAnim(),
     );
   }
 }

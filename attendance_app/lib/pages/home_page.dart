@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/employee.dart';
 import 'login_page.dart';
 import '../pages/attendance_log.dart';
@@ -21,7 +22,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int currentIndex = 0;
-  late Timer _statusTimer;
   bool isTimedIn = false;
   String currentStatus = "Not Timed In";
   Color statusColor = Colors.grey;
@@ -33,140 +33,226 @@ class _HomePageState extends State<HomePage> {
   static const Color lateColor = Color(0xFFFFAB40);
   static const Color leaveColor = Color(0xFFBA68C8);
 
-  // Recent Activities
+  late StreamSubscription<QuerySnapshot> _activityListener;
   List<Map<String, dynamic>> recentActivities = [];
   bool isLoadingActivities = true;
 
   @override
   void initState() {
     super.initState();
-    _updateTimeStatus();
-    _statusTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      if (mounted) _updateTimeStatus();
-    });
-    fetchRecentActivities(); // fetch Firestore logs
+    // We still call this for the initial load, but the listener will handle updates
+    _checkTodayAttendance();
+    _listenToRecentActivities();
   }
 
   @override
   void dispose() {
-    _statusTimer.cancel();
+    _activityListener.cancel();
     super.dispose();
   }
 
-  void _updateTimeStatus() {
-    if (!isTimedIn) {
-      setState(() {
-        currentStatus = "Timed In";
-        statusColor = Colors.green;
-      });
+  // Initial check when the app starts
+  Future<void> _checkTodayAttendance() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('attendance')
+          .where('employeeId', isEqualTo: widget.employee.id)
+          .orderBy('timestamp', descending: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        _syncStatusWithData(snapshot.docs.first.data());
+      }
+    } catch (e) {
+      debugPrint("Check Attendance Error: $e");
+    }
+  }
+
+  // Logic to determine if the document is from TODAY and update UI variables
+  void _syncStatusWithData(Map<String, dynamic> data) {
+    final ts = data['timestamp'] as Timestamp?;
+    if (ts == null) return;
+
+    final activityDate = ts.toDate();
+    final now = DateTime.now();
+
+    // Check if the record is from today
+    bool isToday = activityDate.year == now.year &&
+                   activityDate.month == now.month &&
+                   activityDate.day == now.day;
+
+    if (isToday) {
+      final tsIn = data['timeIn'] as Timestamp?;
+      final tsOut = data['timeOut'] as Timestamp?;
+      
+      if (mounted) {
+        setState(() {
+          isTimedIn = tsOut == null; 
+          _updateStatusLogic(tsIn?.toDate(), tsOut?.toDate());
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() {
+          isTimedIn = false;
+          currentStatus = "Not Timed In";
+          statusColor = Colors.grey;
+        });
+      }
+    }
+  }
+
+  void _updateStatusLogic(DateTime? timeIn, DateTime? timeOut) {
+    if (timeIn == null) {
+      currentStatus = "Not Timed In";
+      statusColor = Colors.grey;
       return;
     }
 
-    final now = DateTime.now();
-    final hour = now.hour;
-    final minute = now.minute;
-
-    setState(() {
-      if (hour < 8) {
-        currentStatus = "Early";
-        statusColor = Colors.blueAccent;
-      } else if (hour == 8 && minute <= 15) {
-        currentStatus = "Present";
-        statusColor = presentColor;
-      } else if (hour >= 8 && hour < 17) {
-        currentStatus = "Late";
-        statusColor = lateColor;
-      } else {
-        currentStatus = "Shift Ended";
-        statusColor = Colors.grey;
-      }
-    });
-  }
-
-  Map<String, dynamic> _getActivityStatus(String? timeStr) {
-    if (timeStr == null || timeStr.isEmpty || timeStr == "--:--") {
-      return {"text": "Absent", "color": absentColor};
+    if (timeOut != null) {
+      currentStatus = "Shift Ended";
+      statusColor = Colors.grey;
+      return;
     }
-    try {
-      final parts = timeStr.split(':');
-      final hour = int.parse(parts[0]);
-      final minute = int.parse(parts[1]);
 
-      if (hour < 8) return {"text": "Early", "color": Colors.blueAccent};
-      if (hour == 8 && minute <= 15) return {"text": "Present", "color": presentColor};
-      if (hour >= 17) return {"text": "Ended", "color": Colors.grey};
-      return {"text": "Late", "color": lateColor};
-    } catch (e) {
-      return {"text": "Absent", "color": absentColor};
+    final hour = timeIn.hour;
+    final minute = timeIn.minute;
+
+    if (hour < 8) {
+      currentStatus = "Early";
+      statusColor = Colors.blueAccent;
+    } else if (hour == 8 && minute <= 15) {
+      currentStatus = "Present";
+      statusColor = presentColor;
+    } else {
+      currentStatus = "Late";
+      statusColor = lateColor;
     }
   }
 
-  // Fetch recent attendance logs from Firestore
-  void fetchRecentActivities() async {
+  Map<String, dynamic> _getActivityStatus(DateTime? tIn, DateTime? tOut) {
+    if (tIn == null) return {"text": "Absent", "color": absentColor};
+    if (tOut != null) return {"text": "Shift Ended", "color": Colors.grey};
+
+    final hour = tIn.hour;
+    final minute = tIn.minute;
+
+    if (hour < 8) return {"text": "Early", "color": Colors.blueAccent};
+    if (hour == 8 && minute <= 15) return {"text": "Present", "color": presentColor};
+    return {"text": "Late", "color": lateColor};
+  }
+
+  void _listenToRecentActivities() {
     setState(() => isLoadingActivities = true);
 
-    final snapshot = await FirebaseFirestore.instance
+    _activityListener = FirebaseFirestore.instance
         .collection('attendance')
+        .where('employeeId', isEqualTo: widget.employee.id)
         .orderBy('timestamp', descending: true)
         .limit(5)
-        .get();
+        .snapshots()
+        .listen((snapshot) {
+      
+      // Update header status using the latest document in the stream
+      if (snapshot.docs.isNotEmpty) {
+        _syncStatusWithData(snapshot.docs.first.data());
+      }
 
-    recentActivities = snapshot.docs.map((doc) {
-      final ts = doc['timestamp'] as Timestamp?;
-      final timeStr = ts != null
-          ? "${ts.toDate().hour.toString().padLeft(2, '0')}:${ts.toDate().minute.toString().padLeft(2, '0')}"
-          : "--:--";
-      final dateStr = ts != null
-          ? "${ts.toDate().month.toString().padLeft(2, '0')}-${ts.toDate().day.toString().padLeft(2, '0')}-${ts.toDate().year}"
-          : "";
+      // Update Recent Activity List
+      recentActivities = snapshot.docs.map((doc) {
+        final data = doc.data(); 
+        final tsIn = data['timeIn'] as Timestamp?;
+        final tsOut = data['timeOut'] as Timestamp?;
+        
+        String timeStr = "--:--";
+        String dateStr = "";
 
-      return {
-        'name': doc['employeeName'] ?? "Unknown",
-        'time': timeStr,
-        'date': dateStr,
-      };
-    }).toList();
+        if (tsIn != null) {
+          final dt = tsIn.toDate();
+          timeStr = "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
+          dateStr = "${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}-${dt.year}";
+        }
 
-    setState(() => isLoadingActivities = false);
+        final statusData = _getActivityStatus(tsIn?.toDate(), tsOut?.toDate());
+
+        return {
+          'name': data['employeeName'] ?? "Unknown",
+          'time': timeStr,
+          'date': dateStr,
+          'statusText': statusData['text'],
+          'statusColor': statusData['color'],
+        };
+      }).toList();
+
+      if (mounted) setState(() => isLoadingActivities = false);
+    }, onError: (error) {
+       debugPrint("Firestore Stream Error: $error");
+    });
   }
 
   void _showLogoutDialog() {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Column(
-            children: [
-              Icon(Icons.logout_rounded, color: absentColor, size: 50),
-              SizedBox(height: 15),
-              Text("Are you sure?", style: TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: const Text(
-            "You will need to login again to access your dashboard.",
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
-          ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: absentColor, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-              onPressed: () {
-                Navigator.pushAndRemoveUntil(context,
-                    MaterialPageRoute(builder: (_) => const LoginPage()), (route) => false);
-              },
-              child: const Text("Logout", style: TextStyle(color: Colors.white)),
-            ),
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Column(
+          children: [
+            Icon(Icons.logout_rounded, color: absentColor, size: 50),
+            SizedBox(height: 15),
+            Text("Are you sure?", style: TextStyle(fontWeight: FontWeight.bold)),
           ],
-        );
-      },
+        ),
+        content: const Text(
+          "You will need to login again to access your dashboard.",
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.grey),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text(
+              "Cancel",
+              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: absentColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              // 1. Perform the async operation
+              await FirebaseAuth.instance.signOut();
+
+              // 2. Check if the widget is still in the tree before using 'context'
+              // This fixes the 'use_build_context_synchronously' warning
+              if (!mounted) return;
+
+              // 3. Navigate away
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginPage()),
+                (route) => false,
+              );
+            },
+            child: const Text("Logout", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
     );
+  }
+
+  Widget getSelectedPage() {
+    switch (currentIndex) {
+      case 0: return dashboardBody();
+      case 1: return const PayrollPage();
+      case 2: return const LeavePage();
+      case 3: return const AttendanceLogPage();
+      case 4: return const ProfilePage();
+      default: return dashboardBody();
+    }
   }
 
   Widget dashboardBody() {
@@ -176,15 +262,16 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- Header & Status ---
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Employee: ${widget.employee.name}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const Text("Location: Company A", style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  Text("Employee: ${widget.employee.name}",
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const Text("Location: Company A",
+                      style: TextStyle(color: Colors.grey, fontSize: 13)),
                 ],
               ),
               Container(
@@ -198,15 +285,14 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     CircleAvatar(radius: 4, backgroundColor: statusColor),
                     const SizedBox(width: 6),
-                    Text(currentStatus, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
+                    Text(currentStatus,
+                        style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
                   ],
                 ),
               )
             ],
           ),
           const SizedBox(height: 20),
-
-          // --- Stats Cards ---
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -222,34 +308,24 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           const SizedBox(height: 20),
-
           _buildWorkingHourCard(),
           const SizedBox(height: 20),
-
-          // --- Small Info Cards ---
           Row(
             children: [
-              Expanded(
-                  child: _buildSmallInfoCard(
-                      "Announcements", Icons.campaign_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AnnouncementsPage())))),
+              Expanded(child: _buildSmallInfoCard("Announcements", Icons.campaign_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AnnouncementsPage())))),
               const SizedBox(width: 15),
-              Expanded(
-                  child: _buildSmallInfoCard(
-                      "Events", Icons.event_note_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EventsPage())))),
+              Expanded(child: _buildSmallInfoCard("Events", Icons.event_note_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EventsPage())))),
             ],
           ),
           const SizedBox(height: 25),
-
           const Text("Recent Activity", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-
-          // --- Dynamic Recent Activity ---
           isLoadingActivities
               ? const Center(child: CircularProgressIndicator())
               : Column(
                   children: recentActivities.map((activity) {
-                    return _buildActivityItem(activity['name'], activity['time'], activity['date']);
-                  }).toList(),
+                  return _buildActivityItem(activity['name'], activity['time'], activity['date'], activity['statusText'], activity['statusColor']);
+                }).toList(),
                 ),
         ],
       ),
@@ -262,7 +338,7 @@ class _HomePageState extends State<HomePage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -281,7 +357,7 @@ class _HomePageState extends State<HomePage> {
       decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(15),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10)]),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)]),
       child: Column(
         children: [
           const Row(children: [Icon(Icons.hourglass_bottom_rounded, size: 20), SizedBox(width: 10), Text("Working Hour Details", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))]),
@@ -290,14 +366,14 @@ class _HomePageState extends State<HomePage> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               _buildTimeIndicator("Office Time", "9 hr", presentColor),
-              _buildTimeIndicator("Working Time", "3 hrs 20 min.", absentColor),
+              _buildTimeIndicator("Working Time", "---", absentColor),
             ],
           ),
           const SizedBox(height: 15),
           Stack(
             children: [
               Container(height: 12, decoration: BoxDecoration(color: presentColor, borderRadius: BorderRadius.circular(10))),
-              FractionallySizedBox(widthFactor: 0.37, child: Container(height: 12, decoration: BoxDecoration(color: absentColor, borderRadius: BorderRadius.circular(10)))),
+              FractionallySizedBox(widthFactor: 0.1, child: Container(height: 12, decoration: BoxDecoration(color: absentColor, borderRadius: BorderRadius.circular(10)))),
             ],
           ),
         ],
@@ -319,7 +395,7 @@ class _HomePageState extends State<HomePage> {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10)]),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)]),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -334,48 +410,26 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildActivityItem(String name, String time, String date) {
-    final statusData = _getActivityStatus(time);
-    final Color color = statusData['color'];
-    final bool isAbsent = statusData['text'] == "Absent";
-
+  Widget _buildActivityItem(String name, String time, String date, String statusText, Color color) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 5)]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 5)]),
       child: Row(
         children: [
           CircleAvatar(radius: 20, backgroundColor: color.withValues(alpha: 0.1), child: Icon(Icons.person_outline, color: color, size: 20)),
           const SizedBox(width: 12),
-          Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-            Text(isAbsent ? "Date: $date" : "In: $time - $date", style: const TextStyle(fontSize: 11, color: Colors.grey))
+            Text("In: $time - $date", style: const TextStyle(fontSize: 11, color: Colors.grey))
           ])),
           Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-              child: Text(statusData['text'], style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))),
+              child: Text(statusText, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))),
         ],
       ),
     );
-  }
-
-  Widget getSelectedPage() {
-    switch (currentIndex) {
-      case 0:
-        return dashboardBody();
-      case 1:
-        return const PayrollPage();
-      case 2:
-        return const LeavePage();
-      case 3:
-        return const AttendanceLogPage();
-      case 4:
-        return const ProfilePage();
-      default:
-        return dashboardBody();
-    }
   }
 
   @override
@@ -400,15 +454,10 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: primaryColor,
         shape: const CircleBorder(),
         onPressed: () async {
-          final result = await Navigator.push(
-              context, MaterialPageRoute(builder: (context) => TimeInPage(employee: widget.employee)));
-          if (result == true) {
-            setState(() {
-              isTimedIn = true;
-              _updateTimeStatus();
-              fetchRecentActivities(); // refresh after time-in
-            });
-          }
+          // Navigating to TimeInPage
+          await Navigator.push(context, MaterialPageRoute(builder: (context) => TimeInPage(employee: widget.employee)));
+          // No need to manually call _checkTodayAttendance here anymore! 
+          // The Stream Listener will catch the change automatically.
         },
         child: const Icon(Icons.timer_outlined, color: Colors.white, size: 28),
       ),
@@ -424,7 +473,7 @@ class _HomePageState extends State<HomePage> {
           BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), label: "Home"),
           BottomNavigationBarItem(icon: Icon(Icons.payments_outlined), label: "Payroll"),
           BottomNavigationBarItem(icon: Icon(Icons.calendar_month_outlined), label: "Leave"),
-          BottomNavigationBarItem(icon: Icon(Icons.history_outlined), label: "Logs"),
+          BottomNavigationBarItem(icon: Icon(Icons.history_outlined), label: "Attendance"),
           BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Profile"),
         ],
       ),

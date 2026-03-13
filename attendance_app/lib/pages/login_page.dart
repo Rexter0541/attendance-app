@@ -21,7 +21,7 @@ class _LoginPageState extends State<LoginPage> {
   static const Color backgroundColor = Color(0xFFF8FAFC);
 
   // =====================================================
-  // LOGIN FUNCTION
+  // LOGIN FUNCTION (UNCHANGED)
   // =====================================================
   Future<void> login() async {
     if (userController.text.isEmpty || passController.text.isEmpty) {
@@ -32,7 +32,6 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
-      /// 1️⃣ FIREBASE AUTH LOGIN
       UserCredential credential =
           await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: userController.text.trim(),
@@ -41,7 +40,6 @@ class _LoginPageState extends State<LoginPage> {
 
       String uid = credential.user!.uid;
 
-      /// 2️⃣ FETCH EMPLOYEE PROFILE
       DocumentSnapshot employeeDoc = await FirebaseFirestore.instance
           .collection("employees")
           .doc(uid)
@@ -53,15 +51,13 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      /// ⭐ UPDATED EMPLOYEE MODEL (WITH ID)
       Employee employee = Employee(
-        id: uid, // ✅ REQUIRED FIX
+        id: uid,
         name: employeeDoc["name"] ?? "Employee",
       );
 
       if (!mounted) return;
 
-      /// 3️⃣ GO TO VERIFICATION
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
@@ -80,12 +76,8 @@ class _LoginPageState extends State<LoginPage> {
     if (mounted) setState(() => _isLoading = false);
   }
 
-  // =====================================================
-  // ERROR HANDLING
-  // =====================================================
   void _handleAuthError(String code) {
     String message;
-
     switch (code) {
       case 'user-not-found':
         message = "User not found";
@@ -99,13 +91,11 @@ class _LoginPageState extends State<LoginPage> {
       default:
         message = "Login failed. Please try again.";
     }
-
     _showError(message);
   }
 
   void _showError(String message) {
     if (!mounted) return;
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -138,7 +128,8 @@ class _LoginPageState extends State<LoginPage> {
           padding: const EdgeInsets.symmetric(horizontal: 30),
           child: Column(
             children: [
-              Image.asset('assets/icon/app_icon.png', width: 100),
+              // ⭐ ANIMATED ICON (MATCHING SPLASH SCREEN)
+              _buildAnimatedHeaderIcon(),
 
               const SizedBox(height: 15),
 
@@ -213,8 +204,13 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
                         child: _isLoading
-                            ? const CircularProgressIndicator(
-                                color: Colors.white,
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Text(
                                 "SIGN IN",
@@ -236,7 +232,39 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   // =====================================================
-  // INPUT WIDGETS
+  // NEW ANIMATED ICON BUILDER
+  // =====================================================
+  Widget _buildAnimatedHeaderIcon() {
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 1200),
+      tween: Tween(begin: 0.0, end: 1.0),
+      curve: Curves.elasticOut,
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: value,
+          child: Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF1E293B).withAlpha(15),
+                  blurRadius: 25,
+                  offset: const Offset(0, 10),
+                )
+              ],
+            ),
+            child: child,
+          ),
+        );
+      },
+      child: Image.asset('assets/icon/app_icon.png', width: 80),
+    );
+  }
+
+  // =====================================================
+  // INPUT WIDGETS (UNCHANGED)
   // =====================================================
   Widget _buildLabel(String label) => Text(
         label,
@@ -263,6 +291,7 @@ class _LoginPageState extends State<LoginPage> {
           fillColor: const Color(0xFFF8FAFC),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none, // Kept UI clean
           ),
         ),
       );

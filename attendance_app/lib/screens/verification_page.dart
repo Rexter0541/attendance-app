@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../models/attendance_session.dart';
 import '../models/employee.dart';
 import '../pages/timein_page.dart';
 import '../pages/login_page.dart';
+import '../pages/home_page.dart';
+
+import '../services/attendance_service.dart';
+import '../services/location_service.dart';
 
 class VerificationPage extends StatefulWidget {
   final Employee employee;
@@ -17,6 +21,10 @@ class VerificationPage extends StatefulWidget {
 }
 
 class _VerificationPageState extends State<VerificationPage> {
+  // SERVICES
+  final AttendanceService attendanceService = AttendanceService();
+  final LocationService locationService = LocationService();
+
   int currentStep = 0;
   double progressValue = 0.0;
   List<String> logs = ["System Ready."];
@@ -27,14 +35,16 @@ class _VerificationPageState extends State<VerificationPage> {
 
   Timer? progressTimer;
 
-static const double officeLat = 16.026648547578503;
-static const double officeLng = 120.42173542356102;
-static const double allowedRadius = 30; // meters
-
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkGPS());
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _checkIfTimedIn();
+      if (mounted) {
+        _checkGPS();
+      }
+    });
   }
 
   @override
@@ -44,52 +54,82 @@ static const double allowedRadius = 30; // meters
   }
 
   // =====================================================
-  // STEP 1 — GPS CHECK
+  // ⚡ CUSTOM SMOOTH TRANSITION ROUTE
   // =====================================================
-  Future<void> _checkGPS() async {
-    try {
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
-      if (!serviceEnabled) {
-        _showErrorDialog("Location Disabled", "Enable GPS first.");
-        return;
-      }
+  Route _createRoute(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        const begin = Offset(0.0, 0.05);
+        const end = Offset.zero;
+        const curve = Curves.easeOutCubic;
 
-      _addLog("Requesting location permission...");
+        var tween = Tween(begin: begin, end: end).chain(CurveTween(curve: curve));
+        var fadeTween = Tween<double>(begin: 0.0, end: 1.0);
 
-      LocationPermission permission = await Geolocator.requestPermission();
+        return FadeTransition(
+          opacity: animation.drive(fadeTween),
+          child: SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          ),
+        );
+      },
+      transitionDuration: const Duration(milliseconds: 500),
+    );
+  }
+
+  // =====================================================
+  // ✅ CHECK EXISTING ATTENDANCE SESSION
+  // =====================================================
+
+  Future<void> _checkIfTimedIn() async {
+    final AttendanceSession? session =
+        await attendanceService.checkTodayAttendance(widget.employee);
+
+    if (session != null) {
+      widget.employee.attendanceId = session.id;
+
+      distanceFromOffice = session.distance;
+      inRange = true;
+
+      _addLog("Existing attendance session restored.");
 
       if (!mounted) return;
 
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        _showErrorDialog(
-            "Permission Denied", "GPS is required for attendance.");
-        return;
-      }
-
-      _addLog("Accessing Satellite Data...");
-
-      userPosition = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
-
-      distanceFromOffice = Geolocator.distanceBetween(
-        userPosition!.latitude,
-        userPosition!.longitude,
-        officeLat,
-        officeLng,
+      Navigator.pushReplacement(
+        context,
+        _createRoute(HomePage(employee: widget.employee)),
       );
+    }
+  }
 
-      inRange = distanceFromOffice <= allowedRadius;
+  // =====================================================
+  // GPS CHECK
+  // =====================================================
+
+  Future<void> _checkGPS() async {
+    try {
+      _addLog("Requesting location permission...");
+
+      final result = await locationService.verifyLocation();
+
+      if (!mounted) return;
+
+      userPosition = result.position;
+      distanceFromOffice = result.distance;
+      inRange = result.inRange;
 
       _addLog(
           "Distance from office: ${distanceFromOffice.toStringAsFixed(2)} meters");
 
       if (!inRange) {
         _addLog("STATUS: OUT OF RANGE ❌");
+
         _showErrorDialog(
           "Out of Range",
-          "You are ${distanceFromOffice.toStringAsFixed(2)}m away.\nAllowed: $allowedRadius m",
+          "You are ${distanceFromOffice.toStringAsFixed(2)}m away.\nAllowed: ${LocationService.allowedRadius} m",
         );
         return;
       }
@@ -102,13 +142,14 @@ static const double allowedRadius = 30; // meters
 
       _initiateQRStep();
     } catch (e) {
-      _showErrorDialog("GPS Error", "Could not verify location.");
+      _showErrorDialog("GPS Error", e.toString());
     }
   }
 
   // =====================================================
-  // STEP 2 — QR
+  // QR STEP
   // =====================================================
+
   void _initiateQRStep() async {
     bool start = await _showActionDialog(
       title: "Step 2: QR Scan",
@@ -133,8 +174,9 @@ static const double allowedRadius = 30; // meters
   }
 
   // =====================================================
-  // STEP 3 — FACE
+  // FACE STEP
   // =====================================================
+
   void _initiatePhotoStep() async {
     bool start = await _showActionDialog(
       title: "Step 3: Face Capture",
@@ -159,52 +201,24 @@ static const double allowedRadius = 30; // meters
   }
 
   // =====================================================
-  // ⭐ CREATE OR FIND ATTENDANCE
+  // SAVE ATTENDANCE
   // =====================================================
+
   Future<void> _saveAttendance() async {
-    final now = DateTime.now();
-    final startOfDay = DateTime(now.year, now.month, now.day);
+    final attendanceId = await attendanceService.createAttendance(
+      employee: widget.employee,
+      lat: userPosition!.latitude,
+      lng: userPosition!.longitude,
+      distance: distanceFromOffice,
+    );
 
-    final query = await FirebaseFirestore.instance
-        .collection("attendance")
-        .where("employeeId", isEqualTo: widget.employee.id)
-        .where(
-          "timestamp",
-          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
-        )
-        .limit(1)
-        .get();
-
-    /// IF ATTENDANCE ALREADY EXISTS
-    if (query.docs.isNotEmpty) {
-      widget.employee.attendanceId = query.docs.first.id;
-      return;
-    }
-
-    /// CREATE NEW ATTENDANCE
-    final docRef =
-        await FirebaseFirestore.instance.collection("attendance").add({
-      "employeeId": widget.employee.id,
-      "employeeName": widget.employee.name,
-      "status": "verified",
-      "timeIn": null,
-      "timeOut": null,
-      "coords": {
-        "lat": userPosition?.latitude,
-        "lng": userPosition?.longitude,
-        "distance": distanceFromOffice,
-      },
-
-      /// IMPORTANT: use Timestamp.now()
-      "timestamp": Timestamp.now(),
-    });
-
-    widget.employee.attendanceId = docRef.id;
+    widget.employee.attendanceId = attendanceId;
   }
 
   // =====================================================
   // FINAL STEP
   // =====================================================
+
   Future<void> _finalizeVerification() async {
     _addLog("Creating Attendance Session...");
 
@@ -218,15 +232,14 @@ static const double allowedRadius = 30; // meters
 
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(
-        builder: (_) => TimeInPage(employee: widget.employee),
-      ),
+      _createRoute(TimeInPage(employee: widget.employee)),
     );
   }
 
   // =====================================================
   // UI
   // =====================================================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -254,6 +267,8 @@ static const double allowedRadius = 30; // meters
     );
   }
 
+  // ================= UI COMPONENTS =================
+
   Widget _buildHeader() {
     return Column(
       children: [
@@ -265,10 +280,17 @@ static const double allowedRadius = 30; // meters
                 : Colors.blue.withAlpha(26),
             shape: BoxShape.circle,
           ),
-          child: Icon(
-            currentStep == 2 ? Icons.verified : Icons.security,
-            size: 48,
-            color: currentStep == 2 ? Colors.green : Colors.blueAccent,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 400),
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              return ScaleTransition(scale: animation, child: child);
+            },
+            child: Icon(
+              currentStep == 2 ? Icons.verified : Icons.security,
+              key: ValueKey<int>(currentStep),
+              size: 48,
+              color: currentStep == 2 ? Colors.green : Colors.blueAccent,
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -283,14 +305,12 @@ static const double allowedRadius = 30; // meters
     );
   }
 
-  Widget _buildProgressBar() {
-    return LinearProgressIndicator(
-      value: progressValue,
-      minHeight: 8,
-      backgroundColor: Colors.grey[300],
-      color: const Color(0xFF6C63FF),
-    );
-  }
+  Widget _buildProgressBar() => LinearProgressIndicator(
+        value: progressValue,
+        minHeight: 8,
+        backgroundColor: Colors.grey[300],
+        color: const Color(0xFF6C63FF),
+      );
 
   Widget _buildInfoCard() {
     return Container(
@@ -303,12 +323,10 @@ static const double allowedRadius = 30; // meters
         children: [
           CircleAvatar(
               backgroundColor: Colors.blue[50],
-              child:
-                  const Icon(Icons.person, color: Color(0xFF6C63FF))),
+              child: const Icon(Icons.person, color: Color(0xFF6C63FF))),
           const SizedBox(width: 15),
           Text(widget.employee.name,
-              style:
-                  const TextStyle(fontWeight: FontWeight.bold)),
+              style: const TextStyle(fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -375,8 +393,7 @@ static const double allowedRadius = 30; // meters
   void _updateProgress(double target) {
     progressTimer?.cancel();
 
-    progressTimer =
-        Timer.periodic(const Duration(milliseconds: 30), (timer) {
+    progressTimer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
       if (!mounted || progressValue >= target) {
         timer.cancel();
       } else {
@@ -401,9 +418,7 @@ static const double allowedRadius = 30; // meters
               children: [
                 Icon(icon, size: 60, color: iconColor),
                 const SizedBox(height: 20),
-                Text(title,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold)),
+                Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 10),
                 Text(message, textAlign: TextAlign.center),
                 const SizedBox(height: 25),
@@ -430,9 +445,7 @@ static const double allowedRadius = 30; // meters
         actions: [
           TextButton(
             onPressed: () => Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const LoginPage())),
+                context, _createRoute(const LoginPage())),
             child: const Text("Return to Login"),
           ),
         ],
