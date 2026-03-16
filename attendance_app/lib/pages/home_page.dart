@@ -37,21 +37,33 @@ class _HomePageState extends State<HomePage> {
   List<Map<String, dynamic>> recentActivities = [];
   bool isLoadingActivities = true;
 
+  // Logic variables for Working Hours
+  Timer? _refreshTimer;
+  DateTime? todayTimeIn;
+  DateTime? lastTimeOut;
+  String finalShiftDuration = "0h 0m";
+
   @override
   void initState() {
     super.initState();
-    // We still call this for the initial load, but the listener will handle updates
     _checkTodayAttendance();
     _listenToRecentActivities();
+
+    // Timer to refresh UI every minute so "Working Time" updates live
+    _refreshTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      if (mounted && isTimedIn) {
+        setState(() {});
+      }
+    });
   }
 
   @override
   void dispose() {
     _activityListener.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
   }
 
-  // Initial check when the app starts
   Future<void> _checkTodayAttendance() async {
     try {
       final snapshot = await FirebaseFirestore.instance
@@ -69,7 +81,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Logic to determine if the document is from TODAY and update UI variables
   void _syncStatusWithData(Map<String, dynamic> data) {
     final ts = data['timestamp'] as Timestamp?;
     if (ts == null) return;
@@ -77,24 +88,35 @@ class _HomePageState extends State<HomePage> {
     final activityDate = ts.toDate();
     final now = DateTime.now();
 
-    // Check if the record is from today
     bool isToday = activityDate.year == now.year &&
-                   activityDate.month == now.month &&
-                   activityDate.day == now.day;
+        activityDate.month == now.month &&
+        activityDate.day == now.day;
 
     if (isToday) {
       final tsIn = data['timeIn'] as Timestamp?;
       final tsOut = data['timeOut'] as Timestamp?;
-      
+
       if (mounted) {
         setState(() {
-          isTimedIn = tsOut == null; 
-          _updateStatusLogic(tsIn?.toDate(), tsOut?.toDate());
+          todayTimeIn = tsIn?.toDate();
+          lastTimeOut = tsOut?.toDate();
+          isTimedIn = tsOut == null;
+
+          // If session ended, calculate the static final duration
+          if (todayTimeIn != null && lastTimeOut != null) {
+            final diff = lastTimeOut!.difference(todayTimeIn!);
+            finalShiftDuration =
+                "${diff.inHours}h ${diff.inMinutes.remainder(60)}m";
+          }
+
+          _updateStatusLogic(todayTimeIn, lastTimeOut);
         });
       }
     } else {
       if (mounted) {
         setState(() {
+          todayTimeIn = null;
+          lastTimeOut = null;
           isTimedIn = false;
           currentStatus = "Not Timed In";
           statusColor = Colors.grey;
@@ -109,16 +131,13 @@ class _HomePageState extends State<HomePage> {
       statusColor = Colors.grey;
       return;
     }
-
     if (timeOut != null) {
       currentStatus = "Shift Ended";
       statusColor = Colors.grey;
       return;
     }
-
     final hour = timeIn.hour;
     final minute = timeIn.minute;
-
     if (hour < 8) {
       currentStatus = "Early";
       statusColor = Colors.blueAccent;
@@ -134,18 +153,17 @@ class _HomePageState extends State<HomePage> {
   Map<String, dynamic> _getActivityStatus(DateTime? tIn, DateTime? tOut) {
     if (tIn == null) return {"text": "Absent", "color": absentColor};
     if (tOut != null) return {"text": "Shift Ended", "color": Colors.grey};
-
     final hour = tIn.hour;
     final minute = tIn.minute;
-
     if (hour < 8) return {"text": "Early", "color": Colors.blueAccent};
-    if (hour == 8 && minute <= 15) return {"text": "Present", "color": presentColor};
+    if (hour == 8 && minute <= 15) {
+      return {"text": "Present", "color": presentColor};
+    }
     return {"text": "Late", "color": lateColor};
   }
 
   void _listenToRecentActivities() {
     setState(() => isLoadingActivities = true);
-
     _activityListener = FirebaseFirestore.instance
         .collection('attendance')
         .where('employeeId', isEqualTo: widget.employee.id)
@@ -153,29 +171,23 @@ class _HomePageState extends State<HomePage> {
         .limit(5)
         .snapshots()
         .listen((snapshot) {
-      
-      // Update header status using the latest document in the stream
       if (snapshot.docs.isNotEmpty) {
         _syncStatusWithData(snapshot.docs.first.data());
       }
-
-      // Update Recent Activity List
       recentActivities = snapshot.docs.map((doc) {
-        final data = doc.data(); 
+        final data = doc.data();
         final tsIn = data['timeIn'] as Timestamp?;
         final tsOut = data['timeOut'] as Timestamp?;
-        
         String timeStr = "--:--";
         String dateStr = "";
-
         if (tsIn != null) {
           final dt = tsIn.toDate();
-          timeStr = "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
-          dateStr = "${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}-${dt.year}";
+          timeStr =
+              "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
+          dateStr =
+              "${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}-${dt.year}";
         }
-
         final statusData = _getActivityStatus(tsIn?.toDate(), tsOut?.toDate());
-
         return {
           'name': data['employeeName'] ?? "Unknown",
           'time': timeStr,
@@ -184,11 +196,28 @@ class _HomePageState extends State<HomePage> {
           'statusColor': statusData['color'],
         };
       }).toList();
-
       if (mounted) setState(() => isLoadingActivities = false);
     }, onError: (error) {
-       debugPrint("Firestore Stream Error: $error");
+      debugPrint("Firestore Stream Error: $error");
     });
+  }
+
+  // Working Time Label Logic
+  String _getWorkingDurationText() {
+    if (todayTimeIn == null) return "0h 0m";
+    // If timed out, show the static final time. If timed in, show live diff.
+    if (!isTimedIn && lastTimeOut != null) return finalShiftDuration;
+    final diff = DateTime.now().difference(todayTimeIn!);
+    return "${diff.inHours}h ${diff.inMinutes.remainder(60)}m";
+  }
+
+  // Progress Bar Width Logic
+  double _getWorkingProgress() {
+    if (todayTimeIn == null) return 0.0;
+    DateTime end = isTimedIn ? DateTime.now() : (lastTimeOut ?? DateTime.now());
+    final diff = end.difference(todayTimeIn!);
+    double percent = diff.inMinutes / 540; // 9 Hours goal
+    return percent.clamp(0.0, 1.0);
   }
 
   void _showLogoutDialog() {
@@ -200,7 +229,8 @@ class _HomePageState extends State<HomePage> {
           children: [
             Icon(Icons.logout_rounded, color: absentColor, size: 50),
             SizedBox(height: 15),
-            Text("Are you sure?", style: TextStyle(fontWeight: FontWeight.bold)),
+            Text("Are you sure?",
+                style: TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
         content: const Text(
@@ -212,25 +242,19 @@ class _HomePageState extends State<HomePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text(
-              "Cancel",
-              style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold),
-            ),
+            child: const Text("Cancel",
+                style:
+                    TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: absentColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             onPressed: () async {
-              // 1. Perform the async operation
               await FirebaseAuth.instance.signOut();
-
-              // 2. Check if the widget is still in the tree before using 'context'
-              // This fixes the 'use_build_context_synchronously' warning
               if (!mounted) return;
-
-              // 3. Navigate away
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -246,12 +270,18 @@ class _HomePageState extends State<HomePage> {
 
   Widget getSelectedPage() {
     switch (currentIndex) {
-      case 0: return dashboardBody();
-      case 1: return const PayrollPage();
-      case 2: return const LeavePage();
-      case 3: return const AttendanceLogPage();
-      case 4: return const ProfilePage();
-      default: return dashboardBody();
+      case 0:
+        return dashboardBody();
+      case 1:
+        return const PayrollPage();
+      case 2:
+        return const LeavePage();
+      case 3:
+        return const AttendanceLogPage();
+      case 4:
+        return const ProfilePage();
+      default:
+        return dashboardBody();
     }
   }
 
@@ -269,24 +299,30 @@ class _HomePageState extends State<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text("Employee: ${widget.employee.name}",
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
                   const Text("Location: Company A",
                       style: TextStyle(color: Colors.grey, fontSize: 13)),
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: statusColor.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: statusColor.withValues(alpha: 0.5), width: 1),
+                  border: Border.all(
+                      color: statusColor.withValues(alpha: 0.5), width: 1),
                 ),
                 child: Row(
                   children: [
                     CircleAvatar(radius: 4, backgroundColor: statusColor),
                     const SizedBox(width: 6),
                     Text(currentStatus,
-                        style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12)),
+                        style: TextStyle(
+                            color: statusColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12)),
                   ],
                 ),
               )
@@ -301,10 +337,12 @@ class _HomePageState extends State<HomePage> {
             mainAxisSpacing: 15,
             childAspectRatio: 1.6,
             children: [
-              _buildStatCard("Present", "20", Icons.check_circle_outline, presentColor),
+              _buildStatCard("Present", "20", Icons.check_circle_outline,
+                  presentColor),
               _buildStatCard("Absent", "1", Icons.error_outline, absentColor),
               _buildStatCard("Late", "2", Icons.access_time, lateColor),
-              _buildStatCard("Leave", "3", Icons.edit_calendar_outlined, leaveColor),
+              _buildStatCard("Leave", "3", Icons.edit_calendar_outlined,
+                  leaveColor),
             ],
           ),
           const SizedBox(height: 20),
@@ -312,40 +350,73 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 20),
           Row(
             children: [
-              Expanded(child: _buildSmallInfoCard("Announcements", Icons.campaign_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AnnouncementsPage())))),
+              Expanded(
+                  child: _buildSmallInfoCard(
+                      "Announcements",
+                      Icons.campaign_outlined,
+                      () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const AnnouncementsPage())))),
               const SizedBox(width: 15),
-              Expanded(child: _buildSmallInfoCard("Events", Icons.event_note_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EventsPage())))),
+              Expanded(
+                  child: _buildSmallInfoCard(
+                      "Events",
+                      Icons.event_note_outlined,
+                      () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const EventsPage())))),
             ],
           ),
           const SizedBox(height: 25),
-          const Text("Recent Activity", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text("Recent Activity",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           isLoadingActivities
               ? const Center(child: CircularProgressIndicator())
               : Column(
                   children: recentActivities.map((activity) {
-                  return _buildActivityItem(activity['name'], activity['time'], activity['date'], activity['statusText'], activity['statusColor']);
-                }).toList(),
+                    return _buildActivityItem(
+                        activity['name'],
+                        activity['time'],
+                        activity['date'],
+                        activity['statusText'],
+                        activity['statusColor']);
+                  }).toList(),
                 ),
         ],
       ),
     );
   }
 
-  Widget _buildStatCard(String title, String count, IconData icon, Color color) {
+  Widget _buildStatCard(
+      String title, String count, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4))
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [Icon(icon, color: color, size: 20), const SizedBox(width: 8), Text(title, style: const TextStyle(fontWeight: FontWeight.bold))]),
+          Row(children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 8),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold))
+          ]),
           const Spacer(),
-          Center(child: Text(count, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold))),
+          Center(
+              child: Text(count,
+                  style: const TextStyle(
+                      fontSize: 28, fontWeight: FontWeight.bold))),
         ],
       ),
     );
@@ -357,23 +428,45 @@ class _HomePageState extends State<HomePage> {
       decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(15),
-          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)]),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)
+          ]),
       child: Column(
         children: [
-          const Row(children: [Icon(Icons.hourglass_bottom_rounded, size: 20), SizedBox(width: 10), Text("Working Hour Details", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))]),
+          const Row(children: [
+            Icon(Icons.hourglass_bottom_rounded,
+                size: 20, color: primaryColor),
+            SizedBox(width: 10),
+            Text("Working Hour Details",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))
+          ]),
           const SizedBox(height: 15),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildTimeIndicator("Office Time", "9 hr", presentColor),
-              _buildTimeIndicator("Working Time", "---", absentColor),
+              _buildTimeIndicator("Office Time", "9 hr", Colors.blueGrey),
+              _buildTimeIndicator(
+                  "Working Time", _getWorkingDurationText(), primaryColor),
             ],
           ),
           const SizedBox(height: 15),
           Stack(
             children: [
-              Container(height: 12, decoration: BoxDecoration(color: presentColor, borderRadius: BorderRadius.circular(10))),
-              FractionallySizedBox(widthFactor: 0.1, child: Container(height: 12, decoration: BoxDecoration(color: absentColor, borderRadius: BorderRadius.circular(10)))),
+              // Background track
+              Container(
+                  height: 12,
+                  decoration: BoxDecoration(
+                      color: Colors.grey.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10))),
+              // Progress bar
+              FractionallySizedBox(
+                  widthFactor: _getWorkingProgress(),
+                  child: Container(
+                      height: 12,
+                      decoration: BoxDecoration(
+                          color: primaryColor,
+                          borderRadius: BorderRadius.circular(10)))),
             ],
           ),
         ],
@@ -385,8 +478,10 @@ class _HomePageState extends State<HomePage> {
     return Row(children: [
       CircleAvatar(radius: 5, backgroundColor: color),
       const SizedBox(width: 6),
-      Text("$label: ", style: const TextStyle(fontSize: 12, color: Colors.black54)),
-      Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))
+      Text("$label: ",
+          style: const TextStyle(fontSize: 12, color: Colors.black54)),
+      Text(value,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))
     ]);
   }
 
@@ -395,38 +490,77 @@ class _HomePageState extends State<HomePage> {
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)]),
+        decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(15),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)
+            ]),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [Icon(icon, color: Colors.orange, size: 18), const SizedBox(width: 5), Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))]),
+            Row(children: [
+              Icon(icon, color: Colors.orange, size: 18),
+              const SizedBox(width: 5),
+              Text(title,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 13))
+            ]),
             const SizedBox(height: 5),
-            const Text("View latest updates...", style: TextStyle(fontSize: 10, color: Colors.grey)),
+            const Text("View latest updates...",
+                style: TextStyle(fontSize: 10, color: Colors.grey)),
             const SizedBox(height: 5),
-            const Align(alignment: Alignment.centerRight, child: Text("View all", style: TextStyle(color: Colors.blue, fontSize: 10, fontWeight: FontWeight.bold))),
+            const Align(
+                alignment: Alignment.centerRight,
+                child: Text("View all",
+                    style: TextStyle(
+                        color: Colors.blue,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold))),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildActivityItem(String name, String time, String date, String statusText, Color color) {
+  Widget _buildActivityItem(String name, String time, String date,
+      String statusText, Color color) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 5)]),
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05), blurRadius: 5)
+          ]),
       child: Row(
         children: [
-          CircleAvatar(radius: 20, backgroundColor: color.withValues(alpha: 0.1), child: Icon(Icons.person_outline, color: color, size: 20)),
+          CircleAvatar(
+              radius: 20,
+              backgroundColor: color.withValues(alpha: 0.1),
+              child: Icon(Icons.person_outline, color: color, size: 20)),
           const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-            Text("In: $time - $date", style: const TextStyle(fontSize: 11, color: Colors.grey))
-          ])),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text("In: $time - $date",
+                    style: const TextStyle(fontSize: 11, color: Colors.grey))
+              ])),
           Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
-              child: Text(statusText, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))),
+              decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20)),
+              child: Text(statusText,
+                  style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12))),
         ],
       ),
     );
@@ -438,13 +572,17 @@ class _HomePageState extends State<HomePage> {
       backgroundColor: bgColor,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text("Dashboard", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
+        title: const Text("Dashboard",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
         backgroundColor: bgColor,
         foregroundColor: Colors.black,
         elevation: 0,
         actions: [
-          IconButton(icon: const Icon(Icons.notifications_none_rounded), onPressed: () {}),
-          IconButton(icon: const Icon(Icons.logout), onPressed: _showLogoutDialog),
+          IconButton(
+              icon: const Icon(Icons.notifications_none_rounded),
+              onPressed: () {}),
+          IconButton(
+              icon: const Icon(Icons.logout), onPressed: _showLogoutDialog),
           const SizedBox(width: 10),
         ],
       ),
@@ -454,10 +592,10 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: primaryColor,
         shape: const CircleBorder(),
         onPressed: () async {
-          // Navigating to TimeInPage
-          await Navigator.push(context, MaterialPageRoute(builder: (context) => TimeInPage(employee: widget.employee)));
-          // No need to manually call _checkTodayAttendance here anymore! 
-          // The Stream Listener will catch the change automatically.
+          await Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => TimeInPage(employee: widget.employee)));
         },
         child: const Icon(Icons.timer_outlined, color: Colors.white, size: 28),
       ),
@@ -470,11 +608,16 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: Colors.white,
         onTap: (index) => setState(() => currentIndex = index),
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), label: "Home"),
-          BottomNavigationBarItem(icon: Icon(Icons.payments_outlined), label: "Payroll"),
-          BottomNavigationBarItem(icon: Icon(Icons.calendar_month_outlined), label: "Leave"),
-          BottomNavigationBarItem(icon: Icon(Icons.history_outlined), label: "Attendance"),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Profile"),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.dashboard_outlined), label: "Home"),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.payments_outlined), label: "Payroll"),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.calendar_month_outlined), label: "Leave"),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.history_outlined), label: "Attendance"),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline), label: "Profile"),
         ],
       ),
     );
