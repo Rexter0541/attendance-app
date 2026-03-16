@@ -43,12 +43,11 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
     final lastDay = DateTime(_selectedYear, _selectedMonth + 1, 1);
 
     return FirebaseFirestore.instance
-        .collection('employees')
-        .doc(user!.uid)
         .collection('attendance')
-        .where('timeIn', isGreaterThanOrEqualTo: Timestamp.fromDate(firstDay))
-        .where('timeIn', isLessThan: Timestamp.fromDate(lastDay))
-        .orderBy('timeIn', descending: true)
+        .where('employeeId', isEqualTo: widget.employee.id)
+        .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(firstDay))
+        .where('timestamp', isLessThan: Timestamp.fromDate(lastDay))
+        .orderBy('timestamp', descending: true)
         .snapshots();
   }
 
@@ -130,6 +129,10 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
                         builder: (context, snapshot) {
                           if (snapshot.connectionState == ConnectionState.waiting) {
                             return const Expanded(child: Center(child: CircularProgressIndicator()));
+                          }
+                          if (snapshot.hasError) {
+                            debugPrint("ATTENDANCE LOG ERROR: ${snapshot.error}");
+                            return const Expanded(child: Center(child: Text("Missing Index. Check Debug Console.")));
                           }
                           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                             return Expanded(child: _buildEmptyState());

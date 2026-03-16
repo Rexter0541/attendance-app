@@ -1,4 +1,4 @@
-// ignore_for_file: unused_import, unused_field
+// ignore_for_file: prefer_single_quotes, unused_import, unused_field
 
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -48,6 +48,12 @@ class _HomePageState extends State<HomePage> {
   List<Map<String, dynamic>> recentActivities = [];
   bool isLoadingActivities = true;
 
+  // State variables for dashboard stats
+  int _presentCount = 0;
+  int _absentCount = 0;
+  int _lateCount = 0;
+  int _leaveCount = 0;
+
   // Logic variables for Working Hours
   Timer? _refreshTimer;
   DateTime? todayTimeIn;
@@ -59,6 +65,7 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _checkTodayAttendance();
     _listenToRecentActivities();
+    _fetchDashboardStats();
 
     // Timer to refresh UI every minute so "Working Time" updates live
     _refreshTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
@@ -161,15 +168,26 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Map<String, dynamic> _getActivityStatus(DateTime? tIn, DateTime? tOut) {
-    if (tIn == null) return {'text': 'Absent', 'color': absentColor};
+  Map<String, dynamic> _getActivityStatus(
+      DateTime? tIn, DateTime? tOut, DateTime recordDate) {
+    if (tIn == null) {
+      final now = DateTime.now();
+      final isToday = recordDate.year == now.year &&
+          recordDate.month == now.month &&
+          recordDate.day == now.day;
+
+      // Kung ngayon ang record at lampas 3 PM na, Absent na.
+      // Kung nakalipas na ang petsa at walang timeIn, Absent na rin.
+      if ((isToday && now.hour >= 15) || recordDate.isBefore(DateTime(now.year, now.month, now.day))) {
+        return {'text': 'Absent', 'color': absentColor};
+      }
+      return {'text': 'Pending', 'color': Colors.grey};
+    }
+
     if (tOut != null) return {'text': 'Shift Ended', 'color': Colors.grey};
     final hour = tIn.hour;
-    final minute = tIn.minute;
     if (hour < 8) return {'text': 'Early', 'color': Colors.blueAccent};
-    if (hour == 8 && minute <= 15) {
-      return {'text': 'Present', 'color': presentColor};
-    }
+    if (hour == 8 && tIn.minute <= 15) return {'text': 'Present', 'color': presentColor};
     return {'text': 'Late', 'color': lateColor};
   }
 
@@ -189,16 +207,18 @@ class _HomePageState extends State<HomePage> {
         final data = doc.data();
         final tsIn = data['timeIn'] as Timestamp?;
         final tsOut = data['timeOut'] as Timestamp?;
+        final tsDate = data['timestamp'] as Timestamp; // Kunin ang timestamp ng record
+        final recordDate = tsDate.toDate();
+
         String timeStr = '--:--';
-        String dateStr = '';
+        String dateStr = "${recordDate.month.toString().padLeft(2, '0')}-${recordDate.day.toString().padLeft(2, '0')}-${recordDate.year}";
+
         if (tsIn != null) {
           final dt = tsIn.toDate();
           timeStr =
               "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
-          dateStr =
-              "${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}-${dt.year}";
         }
-        final statusData = _getActivityStatus(tsIn?.toDate(), tsOut?.toDate());
+        final statusData = _getActivityStatus(tsIn?.toDate(), tsOut?.toDate(), recordDate);
         return {
           'name': data['employeeName'] ?? 'Unknown',
           'time': timeStr,
@@ -231,6 +251,72 @@ class _HomePageState extends State<HomePage> {
     return percent.clamp(0.0, 1.0);
   }
 
+  // Fetches aggregate data for the dashboard stat cards
+  Future<void> _fetchDashboardStats() async {
+    try {
+      // Note: These are simplified queries. For a real app, you'd likely
+      // want to filter by a specific date range (e.g., current month).
+
+      final attendanceQuery = FirebaseFirestore.instance
+          .collection('attendance')
+          .where('employeeId', isEqualTo: widget.employee.id);
+
+      // --- 1. Get Potential Absences (records with no timeIn) ---
+      final potentialAbsences =
+          await attendanceQuery.where('timeIn', isEqualTo: null).get();
+
+      int calculatedAbsent = 0;
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+
+      for (var doc in potentialAbsences.docs) {
+        final ts = doc.data()['timestamp'] as Timestamp?;
+        if (ts != null) {
+          final rDate = ts.toDate();
+          final rDateOnly = DateTime(rDate.year, rDate.month, rDate.day);
+
+          // Count as absent if: Date is in the past OR (It's today AND it's past 3 PM)
+          if (rDateOnly.isBefore(todayStart) || (rDateOnly == todayStart && now.hour >= 15)) {
+            calculatedAbsent++;
+          }
+        }
+      }
+
+      // --- 2. Get Present/Late (where timeIn is NOT null) ---
+      final presentLateSnapshot =
+          await attendanceQuery.where('timeIn', isNotEqualTo: null).get();
+
+      int present = 0;
+      int late = 0;
+      for (var doc in presentLateSnapshot.docs) {
+        final timeIn = (doc.data()['timeIn'] as Timestamp).toDate();
+        if (timeIn.hour > 8 || (timeIn.hour == 8 && timeIn.minute > 15)) {
+          late++;
+        } else {
+          present++;
+        }
+      }
+
+      // Get Leaves (approved)
+      final leaveSnapshot = await FirebaseFirestore.instance
+          .collection('employees')
+          .doc(widget.employee.id)
+          .collection('leaves')
+          .where('status', isEqualTo: 'Approved')
+          .get();
+
+      if (mounted) {
+        setState(() {
+          _absentCount = calculatedAbsent;
+          _presentCount = present;
+          _lateCount = late;
+          _leaveCount = leaveSnapshot.docs.length;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching dashboard stats: $e");
+    }
+  }
 
 
   void _showLogoutDialog() {
@@ -350,11 +436,11 @@ class _HomePageState extends State<HomePage> {
             mainAxisSpacing: 15,
             childAspectRatio: 1.6,
             children: [
-              _buildStatCard('Present', '20', Icons.check_circle_outline,
+              _buildStatCard('Present', _presentCount.toString(), Icons.check_circle_outline,
                   presentColor),
-              _buildStatCard('Absent', '1', Icons.error_outline, absentColor),
-              _buildStatCard('Late', '2', Icons.access_time, lateColor),
-              _buildStatCard('Leave', '3', Icons.edit_calendar_outlined,
+              _buildStatCard('Absent', _absentCount.toString(), Icons.error_outline, absentColor),
+              _buildStatCard('Late', _lateCount.toString(), Icons.access_time, lateColor),
+              _buildStatCard('Leave', _leaveCount.toString(), Icons.edit_calendar_outlined,
                   leaveColor),
             ],
           ),
