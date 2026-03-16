@@ -793,60 +793,57 @@ class _PayrollPageState extends State<PayrollPage> {
 
       /// EXPANDABLE DAILY BREAKDOWN
       if (isExpanded)
-        Container(
-          // No padding here, each item will have its own
-          child: Column(
-            children: [
-              ...daily.map<Widget>((day) {
-                return Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    border: Border(
-                        bottom: BorderSide(color: Colors.grey.shade200)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(day['date'],
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Hours Worked:',
-                              style: TextStyle(color: Colors.black54)),
-                          Text('${day['hoursWorked']} hrs'),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Late Deduction:',
-                              style: TextStyle(color: Colors.black54)),
-                          Text('₱${day['lateDeduction']}',
-                              style: const TextStyle(color: Colors.red)),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Daily Pay:',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                          Text('₱${day['finalPay']}',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue)),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ],
-          ),
+        Column(
+          children: [
+            ...daily.map<Widget>((day) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  border: Border(
+                      bottom: BorderSide(color: Colors.grey.shade200)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(day['date'],
+                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Hours Worked:',
+                            style: TextStyle(color: Colors.black54)),
+                        Text('${day['hoursWorked']} hrs'),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Late Deduction:',
+                            style: TextStyle(color: Colors.black54)),
+                        Text('₱${day['lateDeduction']}',
+                            style: const TextStyle(color: Colors.red)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Daily Pay:',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('₱${day['finalPay']}',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue)),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ],
         ),
     ],
   );

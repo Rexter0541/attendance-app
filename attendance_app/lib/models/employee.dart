@@ -11,7 +11,7 @@ class Employee {
   Employee({
     required this.id,
     required this.name,
-    this.status = "Not Timed In",
+    this.status = 'Not Timed In',
     this.timeIn,
     this.timeOut,
     this.attendanceId,

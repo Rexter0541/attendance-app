@@ -47,14 +47,14 @@ class _LoginPageState extends State<LoginPage> {
           .get();
 
       if (!employeeDoc.exists) {
-        _showError("Employee profile not found");
+        _showError('Employee profile not found');
         setState(() => _isLoading = false);
         return;
       }
 
       Employee employee = Employee(
         id: uid,
-        name: employeeDoc["name"] ?? "Employee",
+        name: employeeDoc['name'] ?? 'Employee',
       );
 
       if (!mounted) return;
@@ -71,7 +71,7 @@ class _LoginPageState extends State<LoginPage> {
     } on FirebaseAuthException catch (e) {
       _handleAuthError(e.code);
     } catch (e) {
-      _showError("Login failed. Check credentials or connection.");
+      _showError('Login failed. Check credentials or connection.');
     }
 
     if (mounted) setState(() => _isLoading = false);

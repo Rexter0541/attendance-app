@@ -1,3 +1,5 @@
+// ignore_for_file: unused_import
+
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -92,7 +94,7 @@ class _VerificationPageState extends State<VerificationPage> {
       distanceFromOffice = session.distance;
       inRange = true;
 
-      _addLog("Existing attendance session restored.");
+      _addLog('Existing attendance session restored.');
 
       if (!mounted) return;
 
@@ -109,7 +111,7 @@ class _VerificationPageState extends State<VerificationPage> {
 
   Future<void> _checkGPS() async {
     try {
-      _addLog("Requesting location permission...");
+      _addLog('Requesting location permission...');
 
       final result = await locationService.verifyLocation();
 
@@ -120,19 +122,19 @@ class _VerificationPageState extends State<VerificationPage> {
       inRange = result.inRange;
 
       _addLog(
-          "Distance from office: ${distanceFromOffice.toStringAsFixed(2)} meters");
+          'Distance from office: ${distanceFromOffice.toStringAsFixed(2)} meters');
 
       if (!inRange) {
-        _addLog("STATUS: OUT OF RANGE ❌");
+        _addLog('STATUS: OUT OF RANGE ❌');
 
         _showErrorDialog(
-          "Out of Range",
-          "You are ${distanceFromOffice.toStringAsFixed(2)}m away.\nAllowed: ${LocationService.allowedRadius} m",
+          'Out of Range',
+          'You are ${distanceFromOffice.toStringAsFixed(2)}m away.\nAllowed: ${LocationService.allowedRadius} m',
         );
         return;
       }
 
-      _addLog("STATUS: WITHIN OFFICE RANGE ✅");
+      _addLog('STATUS: WITHIN OFFICE RANGE ✅');
 
       _updateProgress(0.33);
 
@@ -140,7 +142,7 @@ class _VerificationPageState extends State<VerificationPage> {
 
       _initiateQRStep();
     } catch (e) {
-      _showErrorDialog("GPS Error", e.toString());
+      _showErrorDialog('GPS Error', e.toString());
     }
   }
 
@@ -150,23 +152,23 @@ class _VerificationPageState extends State<VerificationPage> {
 
   void _initiateQRStep() async {
     bool start = await _showActionDialog(
-      title: "Step 2: QR Scan",
-      message: "Please align your employee QR code.",
-      buttonText: "OPEN SCANNER",
+      title: 'Step 2: QR Scan',
+      message: 'Please align your employee QR code.',
+      buttonText: 'OPEN SCANNER',
       icon: Icons.qr_code_scanner,
       iconColor: const Color(0xFF6C63FF),
     );
 
     if (!mounted || !start) return;
 
-    _addLog("Decrypting QR Signature...");
+    _addLog('Decrypting QR Signature...');
     _updateProgress(0.66);
 
     await Future.delayed(const Duration(seconds: 2));
 
     setState(() => currentStep = 1);
 
-    _addLog("Identity Token Validated.");
+    _addLog('Identity Token Validated.');
 
     _initiatePhotoStep();
   }
@@ -177,23 +179,23 @@ class _VerificationPageState extends State<VerificationPage> {
 
   void _initiatePhotoStep() async {
     bool start = await _showActionDialog(
-      title: "Step 3: Face Capture",
-      message: "Face the camera for biometric verification.",
-      buttonText: "START CAPTURE",
+      title: 'Step 3: Face Capture',
+      message: 'Face the camera for biometric verification.',
+      buttonText: 'START CAPTURE',
       icon: Icons.face_unlock_outlined,
       iconColor: Colors.orange,
     );
 
     if (!mounted || !start) return;
 
-    _addLog("Running Biometric Analysis...");
+    _addLog('Running Biometric Analysis...');
     _updateProgress(1.0);
 
     await Future.delayed(const Duration(seconds: 2));
 
     setState(() => currentStep = 2);
 
-    _addLog("Facial Match Confirmed.");
+    _addLog('Facial Match Confirmed.');
 
     _finalizeVerification();
   }
@@ -218,11 +220,11 @@ class _VerificationPageState extends State<VerificationPage> {
   // =====================================================
 
   Future<void> _finalizeVerification() async {
-    _addLog("Creating Attendance Session...");
+    _addLog('Creating Attendance Session...');
 
     await _saveAttendance();
 
-    _addLog("Attendance Secured Successfully.");
+    _addLog('Attendance Secured Successfully.');
 
     await Future.delayed(const Duration(milliseconds: 1200));
 
@@ -293,7 +295,7 @@ class _VerificationPageState extends State<VerificationPage> {
         ),
         const SizedBox(height: 16),
         const Text(
-          "SECURITY PROTOCOL ACTIVE",
+          'SECURITY PROTOCOL ACTIVE',
           style: TextStyle(
               fontWeight: FontWeight.w900,
               letterSpacing: 1.2,
@@ -349,8 +351,8 @@ class _VerificationPageState extends State<VerificationPage> {
           Expanded(
             child: Text(
               inRange
-                  ? "Within office range (${distanceFromOffice.toStringAsFixed(1)}m)"
-                  : "Out of range (${distanceFromOffice.toStringAsFixed(1)}m)",
+                  ? 'Within office range (${distanceFromOffice.toStringAsFixed(1)}m)'
+                  : 'Out of range (${distanceFromOffice.toStringAsFixed(1)}m)',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 color: inRange ? Colors.green : Colors.red,
@@ -374,7 +376,7 @@ class _VerificationPageState extends State<VerificationPage> {
       child: ListView.builder(
         itemCount: logs.length,
         itemBuilder: (_, i) => Text(
-          "> ${logs[i]}",
+          '> ${logs[i]}',
           style: const TextStyle(
               color: Colors.white60,
               fontFamily: 'monospace',
@@ -444,7 +446,7 @@ class _VerificationPageState extends State<VerificationPage> {
           TextButton(
             onPressed: () => Navigator.pushReplacement(
                 context, _createRoute(const LoginPage())),
-            child: const Text("Return to Login"),
+            child: const Text('Return to Login'),
           ),
         ],
       ),

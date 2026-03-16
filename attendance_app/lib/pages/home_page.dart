@@ -1,9 +1,9 @@
+// ignore_for_file: unused_import, unused_field
+
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import '../models/employee.dart';
 import 'login_page.dart';
@@ -26,7 +26,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int currentIndex = 0;
   bool isTimedIn = false;
-  String currentStatus = "Not Timed In";
+  String currentStatus = 'Not Timed In';
   Color statusColor = Colors.grey;
 
   final List<String> _pageTitles = [
@@ -52,7 +52,7 @@ class _HomePageState extends State<HomePage> {
   Timer? _refreshTimer;
   DateTime? todayTimeIn;
   DateTime? lastTimeOut;
-  String finalShiftDuration = "0h 0m";
+  String finalShiftDuration = '0h 0m';
 
   @override
   void initState() {
@@ -88,7 +88,7 @@ class _HomePageState extends State<HomePage> {
         _syncStatusWithData(snapshot.docs.first.data());
       }
     } catch (e) {
-      debugPrint("Check Attendance Error: $e");
+      debugPrint('Check Attendance Error: $e');
     }
   }
 
@@ -117,7 +117,7 @@ class _HomePageState extends State<HomePage> {
           if (todayTimeIn != null && lastTimeOut != null) {
             final diff = lastTimeOut!.difference(todayTimeIn!);
             finalShiftDuration =
-                "${diff.inHours}h ${diff.inMinutes.remainder(60)}m";
+                '${diff.inHours}h ${diff.inMinutes.remainder(60)}m';
           }
 
           _updateStatusLogic(todayTimeIn, lastTimeOut);
@@ -129,7 +129,7 @@ class _HomePageState extends State<HomePage> {
           todayTimeIn = null;
           lastTimeOut = null;
           isTimedIn = false;
-          currentStatus = "Not Timed In";
+          currentStatus = 'Not Timed In';
           statusColor = Colors.grey;
         });
       }
@@ -138,39 +138,39 @@ class _HomePageState extends State<HomePage> {
 
   void _updateStatusLogic(DateTime? timeIn, DateTime? timeOut) {
     if (timeIn == null) {
-      currentStatus = "Not Timed In";
+      currentStatus = 'Not Timed In';
       statusColor = Colors.grey;
       return;
     }
     if (timeOut != null) {
-      currentStatus = "Shift Ended";
+      currentStatus = 'Shift Ended';
       statusColor = Colors.grey;
       return;
     }
     final hour = timeIn.hour;
     final minute = timeIn.minute;
     if (hour < 8) {
-      currentStatus = "Early";
+      currentStatus = 'Early';
       statusColor = Colors.blueAccent;
     } else if (hour == 8 && minute <= 15) {
-      currentStatus = "Present";
+      currentStatus = 'Present';
       statusColor = presentColor;
     } else {
-      currentStatus = "Late";
+      currentStatus = 'Late';
       statusColor = lateColor;
     }
   }
 
   Map<String, dynamic> _getActivityStatus(DateTime? tIn, DateTime? tOut) {
-    if (tIn == null) return {"text": "Absent", "color": absentColor};
-    if (tOut != null) return {"text": "Shift Ended", "color": Colors.grey};
+    if (tIn == null) return {'text': 'Absent', 'color': absentColor};
+    if (tOut != null) return {'text': 'Shift Ended', 'color': Colors.grey};
     final hour = tIn.hour;
     final minute = tIn.minute;
-    if (hour < 8) return {"text": "Early", "color": Colors.blueAccent};
+    if (hour < 8) return {'text': 'Early', 'color': Colors.blueAccent};
     if (hour == 8 && minute <= 15) {
-      return {"text": "Present", "color": presentColor};
+      return {'text': 'Present', 'color': presentColor};
     }
-    return {"text": "Late", "color": lateColor};
+    return {'text': 'Late', 'color': lateColor};
   }
 
   void _listenToRecentActivities() {
@@ -189,8 +189,8 @@ class _HomePageState extends State<HomePage> {
         final data = doc.data();
         final tsIn = data['timeIn'] as Timestamp?;
         final tsOut = data['timeOut'] as Timestamp?;
-        String timeStr = "--:--";
-        String dateStr = "";
+        String timeStr = '--:--';
+        String dateStr = '';
         if (tsIn != null) {
           final dt = tsIn.toDate();
           timeStr =
@@ -200,7 +200,7 @@ class _HomePageState extends State<HomePage> {
         }
         final statusData = _getActivityStatus(tsIn?.toDate(), tsOut?.toDate());
         return {
-          'name': data['employeeName'] ?? "Unknown",
+          'name': data['employeeName'] ?? 'Unknown',
           'time': timeStr,
           'date': dateStr,
           'statusText': statusData['text'],
@@ -209,17 +209,17 @@ class _HomePageState extends State<HomePage> {
       }).toList();
       if (mounted) setState(() => isLoadingActivities = false);
     }, onError: (error) {
-      debugPrint("Firestore Stream Error: $error");
+      debugPrint('Firestore Stream Error: $error');
     });
   }
 
   // Working Time Label Logic
   String _getWorkingDurationText() {
-    if (todayTimeIn == null) return "0h 0m";
+    if (todayTimeIn == null) return '0h 0m';
     // If timed out, show the static final time. If timed in, show live diff.
     if (!isTimedIn && lastTimeOut != null) return finalShiftDuration;
     final diff = DateTime.now().difference(todayTimeIn!);
-    return "${diff.inHours}h ${diff.inMinutes.remainder(60)}m";
+    return '${diff.inHours}h ${diff.inMinutes.remainder(60)}m';
   }
 
   // Progress Bar Width Logic
@@ -231,72 +231,7 @@ class _HomePageState extends State<HomePage> {
     return percent.clamp(0.0, 1.0);
   }
 
-  /// Fetches attendance from Firestore to determine if the user is timed in.
-  Future<void> _checkTodaysAttendance() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        if (mounted) setState(() => isTimedIn = false);
-        _updateTimeStatus();
-        return;
-      }
 
-      final docId = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final docSnapshot = await FirebaseFirestore.instance
-          .collection('employees')
-          .doc(user.uid)
-          .collection('attendance')
-          .doc(docId)
-          .get();
-
-      if (mounted) {
-        final data = docSnapshot.data();
-        final hasTimedIn = docSnapshot.exists && data?['timeIn'] != null;
-        final hasTimedOut = data?['timeOut'] != null;
-
-        setState(() {
-          // The user is considered "active" if they have timed in but not timed out.
-          isTimedIn = hasTimedIn && !hasTimedOut;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error checking attendance: $e');
-      if (mounted) setState(() => isTimedIn = false);
-    } finally {
-      if (mounted) _updateTimeStatus();
-    }
-  }
-
-  void _updateTimeStatus() {
-    // This logic runs only if the user is currently timed in.
-    if (isTimedIn) {
-      final now = DateTime.now();
-      final hour = now.hour;
-      final minute = now.minute;
-
-      setState(() {
-        if (hour < 8) {
-          currentStatus = 'Early';
-          statusColor = Colors.blueAccent;
-        } else if (hour == 8 && minute <= 15) {
-          currentStatus = 'Present';
-          statusColor = presentColor;
-        } else if (hour >= 8 && hour < 17) {
-          currentStatus = 'Late';
-          statusColor = lateColor;
-        } else {
-          currentStatus = 'Shift Ended';
-          statusColor = Colors.grey;
-        }
-      });
-    } else {
-      // If not timed in, set a clear status.
-      setState(() {
-        currentStatus = 'Not Timed In';
-        statusColor = Colors.grey;
-      });
-    }
-  }
 
   void _showLogoutDialog() {
     showDialog(
@@ -307,12 +242,12 @@ class _HomePageState extends State<HomePage> {
           children: [
             Icon(Icons.logout_rounded, color: absentColor, size: 50),
             SizedBox(height: 15),
-            Text("Are you sure?",
+            Text('Are you sure?',
                 style: TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
         content: const Text(
-          "You will need to login again to access your dashboard.",
+          'You will need to login again to access your dashboard.',
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.grey),
         ),
@@ -320,7 +255,7 @@ class _HomePageState extends State<HomePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text("Cancel",
+            child: const Text('Cancel',
                 style:
                     TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
           ),
@@ -339,7 +274,7 @@ class _HomePageState extends State<HomePage> {
                 (route) => false,
               );
             },
-            child: const Text("Logout", style: TextStyle(color: Colors.white)),
+            child: const Text('Logout', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -376,10 +311,10 @@ class _HomePageState extends State<HomePage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Employee: ${widget.employee.name}",
+                  Text('Employee: ${widget.employee.name}',
                       style: const TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 16)),
-                  const Text("Location: Company A",
+                  const Text('Location: Company A',
                       style: TextStyle(color: Colors.grey, fontSize: 13)),
                 ],
               ),
@@ -415,11 +350,11 @@ class _HomePageState extends State<HomePage> {
             mainAxisSpacing: 15,
             childAspectRatio: 1.6,
             children: [
-              _buildStatCard("Present", "20", Icons.check_circle_outline,
+              _buildStatCard('Present', '20', Icons.check_circle_outline,
                   presentColor),
-              _buildStatCard("Absent", "1", Icons.error_outline, absentColor),
-              _buildStatCard("Late", "2", Icons.access_time, lateColor),
-              _buildStatCard("Leave", "3", Icons.edit_calendar_outlined,
+              _buildStatCard('Absent', '1', Icons.error_outline, absentColor),
+              _buildStatCard('Late', '2', Icons.access_time, lateColor),
+              _buildStatCard('Leave', '3', Icons.edit_calendar_outlined,
                   leaveColor),
             ],
           ),
@@ -430,7 +365,7 @@ class _HomePageState extends State<HomePage> {
             children: [
               Expanded(
                   child: _buildSmallInfoCard(
-                      "Announcements",
+                      'Announcements',
                       Icons.campaign_outlined,
                       () => Navigator.push(
                           context,
@@ -439,7 +374,7 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(width: 15),
               Expanded(
                   child: _buildSmallInfoCard(
-                      "Events",
+                      'Events',
                       Icons.event_note_outlined,
                       () => Navigator.push(
                           context,
@@ -448,7 +383,7 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           const SizedBox(height: 25),
-          const Text("Recent Activity",
+          const Text('Recent Activity',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
           isLoadingActivities
@@ -516,16 +451,16 @@ class _HomePageState extends State<HomePage> {
             Icon(Icons.hourglass_bottom_rounded,
                 size: 20, color: primaryColor),
             SizedBox(width: 10),
-            Text("Working Hour Details",
+            Text('Working Hour Details',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))
           ]),
           const SizedBox(height: 15),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildTimeIndicator("Office Time", "9 hr", Colors.blueGrey),
+              _buildTimeIndicator('Office Time', '9 hr', Colors.blueGrey),
               _buildTimeIndicator(
-                  "Working Time", _getWorkingDurationText(), primaryColor),
+                  'Working Time', _getWorkingDurationText(), primaryColor),
             ],
           ),
           const SizedBox(height: 15),
@@ -556,7 +491,7 @@ class _HomePageState extends State<HomePage> {
     return Row(children: [
       CircleAvatar(radius: 5, backgroundColor: color),
       const SizedBox(width: 6),
-      Text("$label: ",
+      Text('$label: ',
           style: const TextStyle(fontSize: 12, color: Colors.black54)),
       Text(value,
           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))
@@ -586,12 +521,12 @@ class _HomePageState extends State<HomePage> {
                       fontWeight: FontWeight.bold, fontSize: 13))
             ]),
             const SizedBox(height: 5),
-            const Text("View latest updates...",
+            const Text('View latest updates...',
                 style: TextStyle(fontSize: 10, color: Colors.grey)),
             const SizedBox(height: 5),
             const Align(
                 alignment: Alignment.centerRight,
-                child: Text("View all",
+                child: Text('View all',
                     style: TextStyle(
                         color: Colors.blue,
                         fontSize: 10,
@@ -626,7 +561,7 @@ class _HomePageState extends State<HomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                 Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                Text("In: $time - $date",
+                Text('In: $time - $date',
                     style: const TextStyle(fontSize: 11, color: Colors.grey))
               ])),
           Container(
@@ -650,7 +585,7 @@ class _HomePageState extends State<HomePage> {
       backgroundColor: bgColor,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text("Dashboard",
+        title: const Text('Dashboard',
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
         backgroundColor: bgColor,
         foregroundColor: Colors.black,
@@ -687,15 +622,15 @@ class _HomePageState extends State<HomePage> {
         onTap: (index) => setState(() => currentIndex = index),
         items: const [
           BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_outlined), label: "Home"),
+              icon: Icon(Icons.dashboard_outlined), label: 'Home'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.payments_outlined), label: "Payroll"),
+              icon: Icon(Icons.payments_outlined), label: 'Payroll'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_month_outlined), label: "Leave"),
+              icon: Icon(Icons.calendar_month_outlined), label: 'Leave'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.history_outlined), label: "Attendance"),
+              icon: Icon(Icons.history_outlined), label: 'Attendance'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline), label: "Profile"),
+              icon: Icon(Icons.person_outline), label: 'Profile'),
         ],
       ),
     );

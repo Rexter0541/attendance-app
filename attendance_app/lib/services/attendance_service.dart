@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_single_quotes
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/employee.dart';
 import '../models/attendance_session.dart';
