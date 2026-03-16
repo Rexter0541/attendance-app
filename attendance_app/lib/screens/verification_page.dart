@@ -1,13 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-
 import '../models/attendance_session.dart';
 import '../models/employee.dart';
 import '../pages/timein_page.dart';
 import '../pages/login_page.dart';
 import '../pages/home_page.dart';
-
 import '../services/attendance_service.dart';
 import '../services/location_service.dart';
 
