@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../models/employee.dart';
 import 'login_page.dart';
 import 'timein_page.dart';
@@ -7,8 +10,8 @@ import '../pages/attendance_log.dart';
 import '../pages/payroll_page.dart';
 import '../pages/leave_page.dart';
 import '../pages/profile_page.dart';
-import '../pages/announcements_page.dart';
-import '../pages/events_page.dart';
+import 'announcements_page.dart';
+import 'events_page.dart';
 
 class HomePage extends StatefulWidget {
   final Employee employee;
@@ -23,8 +26,17 @@ class _HomePageState extends State<HomePage> {
   late Timer _statusTimer;
   
   bool isTimedIn = false; 
-  String currentStatus = "Not Timed In";
+  Map<String, String> _employeeNames = {};
+  String currentStatus = 'Loading...';
   Color statusColor = Colors.grey;
+
+  final List<String> _pageTitles = [
+    'Dashboard',
+    'Payroll',
+    'Leaves',
+    'Attendance Logs',
+    'Profile',
+  ];
 
   static const Color primaryColor = Color(0xFF6C63FF);
   static const Color bgColor = Color(0xFFF2F3F7);
@@ -36,10 +48,15 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _updateTimeStatus();
-    // Refresh status every 30 seconds to keep "Early/Present/Late" accurate
+    _fetchEmployeeNames();
+    _checkTodaysAttendance();
+    // Refresh status every 30 seconds.
     _statusTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      if (mounted) _updateTimeStatus();
+      if (mounted) {
+        // If timed in, update the status (e.g., from "Early" to "Present").
+        // No need to re-check Firestore every 30s.
+        if (isTimedIn) _updateTimeStatus();
+      }
     });
   }
 
@@ -49,53 +66,98 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  void _updateTimeStatus() {
-    if (!isTimedIn) {
-      setState(() {
-        currentStatus = "Timed In";
-        statusColor = Colors.green;
-      });
-      return;
-    }
-
-    final now = DateTime.now();
-    final hour = now.hour;
-    final minute = now.minute;
-
-    setState(() {
-      if (hour < 8) {
-        currentStatus = "Early";
-        statusColor = Colors.blueAccent;
-      } else if (hour == 8 && minute <= 15) {
-        currentStatus = "Present";
-        statusColor = presentColor;
-      } else if (hour >= 8 && hour < 17) {
-        currentStatus = "Late";
-        statusColor = lateColor;
-      } else {
-        currentStatus = "Shift Ended";
-        statusColor = Colors.grey;
-      }
-    });
-  }
-
-  Map<String, dynamic> _getActivityStatus(String? timeStr) {
-    if (timeStr == null || timeStr.isEmpty || timeStr == "--:--") {
-      return {"text": "Absent", "color": absentColor};
-    }
+  /// Fetches all employee names and stores them in a map for easy lookup.
+  Future<void> _fetchEmployeeNames() async {
     try {
-      final parts = timeStr.split(':');
-      final hour = int.parse(parts[0]);
-      final minute = int.parse(parts[1]);
-
-      if (hour < 8) return {"text": "Early", "color": Colors.blueAccent};
-      if (hour == 8 && minute <= 15) return {"text": "Present", "color": presentColor};
-      if (hour >= 17) return {"text": "Ended", "color": Colors.grey};
-      return {"text": "Late", "color": lateColor};
+      final snapshot = await FirebaseFirestore.instance.collection('employees').get();
+      final names = {for (var doc in snapshot.docs) doc.id: doc.data()['name'] as String};
+      if (mounted) {
+        setState(() => _employeeNames = names);
+      }
     } catch (e) {
-      return {"text": "Absent", "color": absentColor};
+      debugPrint('Error fetching employee names: $e');
     }
   }
+
+  /// Fetches attendance from Firestore to determine if the user is timed in.
+  Future<void> _checkTodaysAttendance() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        if (mounted) setState(() => isTimedIn = false);
+        _updateTimeStatus();
+        return;
+      }
+
+      final docId = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final docSnapshot = await FirebaseFirestore.instance
+          .collection('employees')
+          .doc(user.uid)
+          .collection('attendance')
+          .doc(docId)
+          .get();
+
+      if (mounted) {
+        final data = docSnapshot.data();
+        final hasTimedIn = docSnapshot.exists && data?['timeIn'] != null;
+        final hasTimedOut = data?['timeOut'] != null;
+
+        setState(() {
+          // The user is considered "active" if they have timed in but not timed out.
+          isTimedIn = hasTimedIn && !hasTimedOut;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error checking attendance: $e');
+      if (mounted) setState(() => isTimedIn = false);
+    } finally {
+      if (mounted) _updateTimeStatus();
+    }
+  }
+
+  void _updateTimeStatus() {
+    // This logic runs only if the user is currently timed in.
+    if (isTimedIn) {
+      final now = DateTime.now();
+      final hour = now.hour;
+      final minute = now.minute;
+
+      setState(() {
+        if (hour < 8) {
+          currentStatus = 'Early';
+          statusColor = Colors.blueAccent;
+        } else if (hour == 8 && minute <= 15) {
+          currentStatus = 'Present';
+          statusColor = presentColor;
+        } else if (hour >= 8 && hour < 17) {
+          currentStatus = 'Late';
+          statusColor = lateColor;
+        } else {
+          currentStatus = 'Shift Ended';
+          statusColor = Colors.grey;
+        }
+      });
+    } else {
+      // If not timed in, set a clear status.
+      setState(() {
+        currentStatus = 'Not Timed In';
+        statusColor = Colors.grey;
+      });
+    }
+  }
+
+  Map<String, dynamic> _getActivityStatus(Timestamp? timeIn, Timestamp? timeOut) {
+  if (timeIn == null) return {'text': 'Absent', 'color': absentColor};
+
+  DateTime time = timeIn.toDate();
+
+  final hour = time.hour;
+  final minute = time.minute;
+
+  if (hour < 8) return {'text': 'Early', 'color': Colors.blueAccent};
+  if (hour == 8 && minute <= 15) return {'text': 'Present', 'color': presentColor};
+  return {'text': 'Late', 'color': lateColor};
+}
 
   void _showLogoutDialog() {
     showDialog(
@@ -107,19 +169,19 @@ class _HomePageState extends State<HomePage> {
             children: [
               Icon(Icons.logout_rounded, color: absentColor, size: 50),
               SizedBox(height: 15),
-              Text("Are you sure?", style: TextStyle(fontWeight: FontWeight.bold)),
+            Text('Are you sure?', style: TextStyle(fontWeight: FontWeight.bold)),
             ],
           ),
-          content: const Text(
-            "You will need to login again to access your dashboard.",
-            textAlign: TextAlign.center, // FIXED: Changed to TextAlign.center
-            style: TextStyle(color: Colors.grey),
-          ),
+        content: const Text('You will need to login again to access your dashboard.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.grey),
+        ),
           actionsAlignment: MainAxisAlignment.center,
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            child: const Text('Cancel',
+                style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -133,7 +195,7 @@ class _HomePageState extends State<HomePage> {
                   (route) => false
                 );
               },
-              child: const Text("Logout", style: TextStyle(color: Colors.white)),
+              child: const Text('Logout', style: TextStyle(color: Colors.white)),
             ),
           ],
         );
@@ -154,17 +216,17 @@ class _HomePageState extends State<HomePage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Employee: ${widget.employee.name}", 
+                  Text('Employee: ${widget.employee.name}',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  const Text("Location: Company A", 
-                      style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const Text('Location: Company A',
+                      style: TextStyle(color: Colors.grey, fontSize: 13))
                 ],
               ),
               // --- Status Badge ---
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.15),
+                  color: statusColor.withValues(alpha:0.15),
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: statusColor.withValues(alpha: 0.5), width: 1),
                 ),
@@ -188,10 +250,10 @@ class _HomePageState extends State<HomePage> {
             mainAxisSpacing: 15,
             childAspectRatio: 1.6,
             children: [
-              _buildStatCard("Present", "20", Icons.check_circle_outline, presentColor),
-              _buildStatCard("Absent", "1", Icons.error_outline, absentColor),
-              _buildStatCard("Late", "2", Icons.access_time, lateColor),
-              _buildStatCard("Leave", "3", Icons.edit_calendar_outlined, leaveColor),
+              _buildStatCard('Present', '20', Icons.check_circle_outline, presentColor),
+              _buildStatCard('Absent', '1', Icons.error_outline, absentColor),
+              _buildStatCard('Late', '2', Icons.access_time, lateColor),
+              _buildStatCard('Leave', '3', Icons.edit_calendar_outlined, leaveColor),
             ],
           ),
           const SizedBox(height: 20),
@@ -199,18 +261,16 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 20),
           Row(
             children: [
-              Expanded(child: _buildSmallInfoCard("Announcements", Icons.campaign_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AnnouncementsPage())))),
+              Expanded(child: _buildSmallInfoCard('Announcements', Icons.campaign_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AnnouncementsPage())))),
               const SizedBox(width: 15),
-              Expanded(child: _buildSmallInfoCard("Events", Icons.event_note_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EventsPage())))),
+              Expanded(child: _buildSmallInfoCard('Events', Icons.event_note_outlined, () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EventsPage())))),
             ],
           ),
           const SizedBox(height: 25),
-          const Text("Recent Activity", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const Text('Recent Activity',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          _buildActivityItem("Krestyan Stick", "08:05", "03-03-2026"),
-          _buildActivityItem("Rexter Balmonte", "08:45", "03-03-2026"),
-          _buildActivityItem("Raymond Gallego", "07:50", "03-03-2026"),
-          _buildActivityItem("Juan Dela Cruz", "--:--", "03-03-2026"), 
+          _buildRecentActivityList(),
         ],
       ),
     );
@@ -241,13 +301,13 @@ class _HomePageState extends State<HomePage> {
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10)]),
       child: Column(
         children: [
-          const Row(children: [Icon(Icons.hourglass_bottom_rounded, size: 20), SizedBox(width: 10), Text("Working Hour Details", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))]),
+          const Row(children: [Icon(Icons.hourglass_bottom_rounded, size: 20), SizedBox(width: 10), Text('Working Hour Details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15))]),
           const SizedBox(height: 15),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildTimeIndicator("Office Time", "9 hr", presentColor),
-              _buildTimeIndicator("Working Time", "3 hrs 20 min.", absentColor),
+              _buildTimeIndicator('Office Time', '9 hr', presentColor),
+              _buildTimeIndicator('Working Time', '3 hrs 20 min.', absentColor),
             ],
           ),
           const SizedBox(height: 15),
@@ -263,7 +323,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildTimeIndicator(String label, String value, Color color) {
-    return Row(children: [CircleAvatar(radius: 5, backgroundColor: color), const SizedBox(width: 6), Text("$label: ", style: const TextStyle(fontSize: 12, color: Colors.black54)), Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))]);
+    return Row(children: [CircleAvatar(radius: 5, backgroundColor: color), const SizedBox(width: 6), Text('$label: ', style: const TextStyle(fontSize: 12, color: Colors.black54)), Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))]);
   }
 
   Widget _buildSmallInfoCard(String title, IconData icon, VoidCallback onTap) {
@@ -277,53 +337,134 @@ class _HomePageState extends State<HomePage> {
           children: [
             Row(children: [Icon(icon, color: Colors.orange, size: 18), const SizedBox(width: 5), Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))]),
             const SizedBox(height: 5),
-            const Text("View latest updates...", style: TextStyle(fontSize: 10, color: Colors.grey)),
+            const Text('View latest updates...', style: TextStyle(fontSize: 10, color: Colors.grey)),
             const SizedBox(height: 5),
-            const Align(alignment: Alignment.centerRight, child: Text("View all", style: TextStyle(color: Colors.blue, fontSize: 10, fontWeight: FontWeight.bold))),
+            const Align(alignment: Alignment.centerRight, child: Text('View all', style: TextStyle(color: Colors.blue, fontSize: 10, fontWeight: FontWeight.bold))),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildActivityItem(String name, String time, String date) {
-    final statusData = _getActivityStatus(time);
-    final Color color = statusData['color'];
-    final bool isAbsent = statusData['text'] == "Absent";
+  Widget _buildActivityItem(String name, Timestamp? timeIn, Timestamp? timeOut) {
+  final statusData = _getActivityStatus(timeIn, timeOut);
+  final Color color = statusData['color'];
+  final bool isAbsent = statusData['text'] == 'Absent';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(15), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 5)]),
-      child: Row(
-        children: [
-          CircleAvatar(radius: 20, backgroundColor: color.withValues(alpha: 0.1), child: Icon(Icons.person_outline, color: color, size: 20)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start, 
-              children: [
-                Text(name, style: const TextStyle(fontWeight: FontWeight.bold)), 
-                Text(isAbsent ? "Date: $date" : "In: $time - $date", style: const TextStyle(fontSize: 11, color: Colors.grey))
-              ]
-            )
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6), 
-            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)), 
-            child: Text(statusData['text'], style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))
-          ),
-        ],
+  final String timeStr = timeIn != null ? DateFormat('h:mm a').format(timeIn.toDate()) : '--:--';
+  final String dateStr = timeIn != null ? DateFormat('MM-dd-yyyy').format(timeIn.toDate()) : '--';
+
+  return Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(15),
+      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 5)],
+    ),
+    child: Row(
+      children: [
+        CircleAvatar(radius: 20, backgroundColor: color.withValues(alpha: 0.1), child: Icon(Icons.person_outline, color: color, size: 20)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, 
+            children: [
+              Text(name, style: const TextStyle(fontWeight: FontWeight.bold)), 
+              Text(isAbsent ? 'Date: $dateStr' : 'In: $timeStr - $dateStr', style: const TextStyle(fontSize: 11, color: Colors.grey))
+            ]
+          )
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6), 
+          decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)), 
+          child: Text(statusData['text'], style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))
+        ),
+      ],
+    ),
+  );
+}
+
+  Widget _buildRecentActivityList() {
+  // Show a loader while employee names are being fetched.
+  if (_employeeNames.isEmpty) {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(20.0),
+        child: CircularProgressIndicator(),
       ),
     );
   }
 
+  return FutureBuilder<List<Widget>>(
+    future: _fetchRecentActivities(),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      if (snapshot.hasError) {
+        debugPrint('Error fetching recent activity: ${snapshot.error}');
+        return const Center(child: Text('Error fetching recent activity.'));
+      }
+      final activityList = snapshot.data ?? [];
+      if (activityList.isEmpty) {
+        return const Center(child: Text('No recent activity from other employees.'));
+      }
+      return Column(children: activityList);
+    },
+  );
+}
+
+/// Fetches the most recent activity from other employees without requiring a composite index.
+Future<List<Widget>> _fetchRecentActivities() async {
+  final List<Widget> recentActivityWidgets = [];
+
+  try {
+    for (var entry in _employeeNames.entries) {
+      final employeeId = entry.key;
+      final employeeName = entry.value;
+
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('employees')
+          .doc(employeeId)
+          .collection('attendance')
+          .orderBy('timeIn', descending: true)
+          .limit(1)
+          .get();
+
+      if (querySnapshot.docs.isNotEmpty) {
+        final data = querySnapshot.docs.first.data();
+        final Timestamp? timeInTimestamp = data['timeIn'];
+        final Timestamp? timeOutTimestamp = data['timeOut'];
+
+        recentActivityWidgets.add(_buildActivityItem(employeeName, timeInTimestamp, timeOutTimestamp));
+      }
+    }
+  } catch (e) {
+    debugPrint('Error fetching recent activities: $e');
+  }
+
+  return recentActivityWidgets;
+}
+
   Widget getSelectedPage() {
     switch (currentIndex) {
       case 0: return dashboardBody();
-      case 1: return const PayrollPage();
-      case 2: return const LeavePage();
-      case 3: return const AttendanceLogPage();
+      case 1:
+        return PayrollPage(
+            employee: widget.employee,
+            currentStatus: currentStatus,
+            statusColor: statusColor);
+      case 2:
+        return LeavePage(
+            employee: widget.employee,
+            currentStatus: currentStatus,
+            statusColor: statusColor);
+      case 3:
+        return AttendanceLogPage(
+            employee: widget.employee,
+            currentStatus: currentStatus,
+            statusColor: statusColor);
       case 4: return const ProfilePage();
       default: return dashboardBody();
     }
@@ -335,7 +476,7 @@ class _HomePageState extends State<HomePage> {
       backgroundColor: bgColor,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text("Dashboard", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
+        title: Text(_pageTitles[currentIndex], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22)),
         backgroundColor: bgColor,
         foregroundColor: Colors.black,
         elevation: 0,
@@ -351,17 +492,12 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: primaryColor,
         shape: const CircleBorder(),
         onPressed: () async {
-          final result = await Navigator.push(
+          await Navigator.push(
             context, 
             MaterialPageRoute(builder: (context) => TimeInPage(employee: widget.employee))
           );
-          
-          if (result == true) {
-            setState(() {
-              isTimedIn = true;
-              _updateTimeStatus();
-            });
-          }
+          // After returning, refresh the attendance status from the database.
+          _checkTodaysAttendance();
         },
         child: const Icon(Icons.timer_outlined, color: Colors.white, size: 28),
       ),
@@ -374,11 +510,11 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: Colors.white,
         onTap: (index) => setState(() => currentIndex = index),
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), label: "Home"),
-          BottomNavigationBarItem(icon: Icon(Icons.payments_outlined), label: "Payroll"),
-          BottomNavigationBarItem(icon: Icon(Icons.calendar_month_outlined), label: "Leave"),
-          BottomNavigationBarItem(icon: Icon(Icons.history_outlined), label: "Logs"),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Profile"),
+          BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.payments_outlined), label: 'Payroll'),
+          BottomNavigationBarItem(icon: Icon(Icons.calendar_month_outlined), label: 'Leave'),
+          BottomNavigationBarItem(icon: Icon(Icons.history_outlined), label: 'Logs'),
+          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
         ],
       ), 
     );

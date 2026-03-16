@@ -1,19 +1,78 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../models/employee.dart';
 
-class AttendanceLogPage extends StatelessWidget {
-  const AttendanceLogPage({super.key});
+class AttendanceLogPage extends StatefulWidget {
+  final Employee employee;
+  final String currentStatus;
+  final Color statusColor;
+  const AttendanceLogPage(
+      {super.key,
+      required this.employee,
+      required this.currentStatus,
+      required this.statusColor});
+
+  @override
+  State<AttendanceLogPage> createState() => _AttendanceLogPageState();
+}
+
+class _AttendanceLogPageState extends State<AttendanceLogPage> {
+  final User? user = FirebaseAuth.instance.currentUser;
+  late int _selectedYear;
+  late int _selectedMonth;
 
   static const Color bgColor = Color(0xFFF2F3F7);
   static const Color primaryColor = Color(0xFF6C63FF);
-  static const Color presentColor = Color(0xFF4CAF50);
 
-  // ✅ Sample Data
-  final List<Map<String, String>> attendanceData = const [
-    {"name": "Itchan", "in": "08:00 AM", "out": "05:00 PM", "date": "Mar 01"},
-    {"name": "Itchan", "in": "07:55 AM", "out": "05:10 PM", "date": "Mar 02"},
-    {"name": "Itchan", "in": "08:05 AM", "out": "04:55 PM", "date": "Mar 03"},
-    {"name": "Itchan", "in": "07:45 AM", "out": "05:00 PM", "date": "Mar 04"},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _selectedYear = now.year;
+    _selectedMonth = now.month;
+  }
+
+  /// Creates a Firestore stream based on the selected filters.
+  Stream<QuerySnapshot> _getAttendanceStream() {
+    if (user == null) return const Stream.empty();
+
+    final firstDay = DateTime(_selectedYear, _selectedMonth, 1);
+    // Go to the first moment of the next month for the 'isLessThan' query.
+    final lastDay = DateTime(_selectedYear, _selectedMonth + 1, 1);
+
+    return FirebaseFirestore.instance
+        .collection('employees')
+        .doc(user!.uid)
+        .collection('attendance')
+        .where('timeIn', isGreaterThanOrEqualTo: Timestamp.fromDate(firstDay))
+        .where('timeIn', isLessThan: Timestamp.fromDate(lastDay))
+        .orderBy('timeIn', descending: true)
+        .snapshots();
+  }
+
+  /// Shows a dialog to select the year.
+  Future<void> _selectYear() async {
+    final int? picked = await showDialog(
+      context: context,
+      builder: (context) => _YearPickerDialog(initialYear: _selectedYear),
+    );
+    if (picked != null && picked != _selectedYear) {
+      setState(() => _selectedYear = picked);
+    }
+  }
+
+  /// Shows a dialog to select the month.
+  Future<void> _selectMonth() async {
+    final int? picked = await showDialog(
+      context: context,
+      builder: (context) => _MonthPickerDialog(initialMonth: _selectedMonth),
+    );
+    if (picked != null && picked != _selectedMonth) {
+      setState(() => _selectedMonth = picked);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,25 +116,27 @@ class AttendanceLogPage extends StatelessWidget {
                         ),
                         child: const Row(
                           children: [
-                            Expanded(child: Center(child: _HeaderText("Name"))),
-                            Expanded(child: Center(child: _HeaderText("Time-in"))),
-                            Expanded(child: Center(child: _HeaderText("Time-out"))),
-                            Expanded(child: Center(child: _HeaderText("Date"))),
+                            Expanded(child: Center(child: _HeaderText('Name'))),
+                            Expanded(child: Center(child: _HeaderText('Time-in'))),
+                            Expanded(child: Center(child: _HeaderText('Time-out'))),
+                            Expanded(child: Center(child: _HeaderText('Date'))),
                           ],
                         ),
                       ),
                       
                       // ✅ Attendance List Body
-                      Expanded(
-                        child: attendanceData.isEmpty 
-                          ? _buildEmptyState() 
-                          : ListView.builder(
-                              itemCount: attendanceData.length,
-                              itemBuilder: (context, index) {
-                                final log = attendanceData[index];
-                                return _buildDataRow(log);
-                              },
-                            ),
+                      StreamBuilder<QuerySnapshot>(
+                        stream: _getAttendanceStream(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Expanded(child: Center(child: CircularProgressIndicator()));
+                          }
+                          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                            return Expanded(child: _buildEmptyState());
+                          }
+
+                          return Expanded(child: _buildList(snapshot.data!.docs));
+                        },
                       ),
                     ],
                   ),
@@ -89,8 +150,29 @@ class AttendanceLogPage extends StatelessWidget {
     );
   }
 
+  Widget _buildList(List<DocumentSnapshot> docs) {
+    return ListView.builder(
+      itemCount: docs.length,
+      itemBuilder: (context, index) {
+        return _buildDataRow(docs[index].data() as Map<String, dynamic>);
+      },
+    );
+  }
+
   // ✅ Helper to build individual data rows
-  Widget _buildDataRow(Map<String, String> log) {
+  Widget _buildDataRow(Map<String, dynamic> data) {
+    // Format Data
+    final String name = widget.employee.name;
+    final String date = data['timeIn'] != null 
+        ? DateFormat('MMM dd').format((data['timeIn'] as Timestamp).toDate()) 
+        : '--';
+    final String timeIn = data['timeIn'] != null 
+        ? DateFormat('h:mm a').format((data['timeIn'] as Timestamp).toDate()) 
+        : '--';
+    final String timeOut = data['timeOut'] != null 
+        ? DateFormat('h:mm a').format((data['timeOut'] as Timestamp).toDate()) 
+        : '--';
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 15),
       decoration: BoxDecoration(
@@ -98,10 +180,10 @@ class AttendanceLogPage extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Expanded(child: Center(child: _DataText(log["name"]!))),
-          Expanded(child: Center(child: _DataText(log["in"]!, color: Colors.blue))),
-          Expanded(child: Center(child: _DataText(log["out"]!, color: Colors.orange))),
-          Expanded(child: Center(child: _DataText(log["date"]!, fontWeight: FontWeight.bold))),
+          Expanded(child: Center(child: _DataText(name))),
+          Expanded(child: Center(child: _DataText(timeIn, color: Colors.blue))),
+          Expanded(child: Center(child: _DataText(timeOut, color: Colors.orange))),
+          Expanded(child: Center(child: _DataText(date, fontWeight: FontWeight.bold))),
         ],
       ),
     );
@@ -111,17 +193,22 @@ class AttendanceLogPage extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Column(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Employee: Itchan", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            Text("Location: Company A", style: TextStyle(color: Colors.black54, fontSize: 12)),
+            Text('Employee: ${widget.employee.name}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            const Text('Location: Company A', style: TextStyle(color: Colors.black54, fontSize: 12)),
           ],
         ),
         Row(
           children: [
-            const Text("Status: ", style: TextStyle(fontWeight: FontWeight.w500, fontSize: 12)),
-            Text("Present", style: TextStyle(color: presentColor, fontWeight: FontWeight.bold, fontSize: 12)),
+            const Text('Status: ',
+                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 12)),
+            Text(widget.currentStatus,
+                style: TextStyle(
+                    color: widget.statusColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12)),
           ],
         )
       ],
@@ -131,9 +218,21 @@ class AttendanceLogPage extends StatelessWidget {
   Widget _buildFilters() {
     return Row(
       children: [
-        Expanded(child: _buildFilterDropdown("2026", Icons.calendar_today_outlined)),
+        Expanded(
+          child: InkWell(
+            onTap: _selectYear,
+            child: _buildFilterDropdown(
+                _selectedYear.toString(), Icons.calendar_today_outlined),
+          ),
+        ),
         const SizedBox(width: 15),
-        Expanded(child: _buildFilterDropdown("March", Icons.keyboard_arrow_down)),
+        Expanded(
+          child: InkWell(
+            onTap: _selectMonth,
+            child: _buildFilterDropdown(
+                DateFormat('MMMM').format(DateTime(0, _selectedMonth)), Icons.keyboard_arrow_down),
+          ),
+        ),
       ],
     );
   }
@@ -162,8 +261,85 @@ class AttendanceLogPage extends StatelessWidget {
       children: [
         Icon(Icons.inventory_2_outlined, size: 80, color: Colors.grey.shade300),
         const SizedBox(height: 10),
-        const Text("No Logs Found", style: TextStyle(color: Colors.grey, fontSize: 14)),
+        const Text('No Logs Found', style: TextStyle(color: Colors.grey, fontSize: 14)),
       ],
+    );
+  }
+}
+
+/// A simple dialog to pick a year.
+class _YearPickerDialog extends StatelessWidget {
+  final int initialYear;
+  const _YearPickerDialog({required this.initialYear});
+
+  @override
+  Widget build(BuildContext context) {
+    final int currentYear = DateTime.now().year;
+    final List<int> years =
+        List.generate(6, (index) => currentYear - 5 + index).reversed.toList();
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      title: const Text('Select Year',
+          style: TextStyle(fontWeight: FontWeight.bold)),
+      content: SizedBox(
+        width: 100,
+        height: 250,
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: years.length,
+          itemBuilder: (context, index) {
+            final year = years[index];
+            return ListTile(
+              title: Text(
+                year.toString(),
+                style: TextStyle(
+                  fontWeight:
+                      year == initialYear ? FontWeight.bold : FontWeight.normal,
+                  color: year == initialYear
+                      ? _AttendanceLogPageState.primaryColor
+                      : null,
+                ),
+              ),
+              onTap: () => Navigator.of(context).pop(year),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// A simple dialog to pick a month.
+class _MonthPickerDialog extends StatelessWidget {
+  final int initialMonth;
+  const _MonthPickerDialog({required this.initialMonth});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      title: const Text('Select Month',
+          style: TextStyle(fontWeight: FontWeight.bold)),
+      content: SizedBox(
+        width: 100,
+        height: 350,
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: 12,
+          itemBuilder: (context, index) {
+            final month = index + 1;
+            final monthName = DateFormat('MMMM').format(DateTime(0, month));
+            return ListTile(
+              title: Text(monthName,
+                  style: TextStyle(
+                      fontWeight: month == initialMonth ? FontWeight.bold : FontWeight.normal,
+                      color: month == initialMonth ? _AttendanceLogPageState.primaryColor : null)),
+              onTap: () => Navigator.of(context).pop(month),
+            );
+          },
+        ),
+      ),
     );
   }
 }

@@ -40,11 +40,11 @@ class ProfilePage extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            "Profile",
+                            'Profile',
                             style: TextStyle(fontWeight: FontWeight.w900, fontSize: 28),
                           ),
                           Text(
-                            "Manage your information and preferences",
+                            'Manage your information and preferences',
                             style: TextStyle(color: Colors.grey[600], fontSize: 13),
                           ),
                         ],
@@ -54,49 +54,49 @@ class ProfilePage extends StatelessWidget {
 
                     _buildAvatar(),
                     const SizedBox(height: 15),
-                    const Text("Itchan",
+                    const Text('Itchan',
                         style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                    const Text("Software Developer",
+                    const Text('Software Developer',
                         style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
                     const SizedBox(height: 30),
 
                     // --- SECTION: Personal Information ---
-                    _buildSectionLabel("Personal Information"),
-                    _buildProfileItem(Icons.badge_outlined, "Employee ID", "EMP-2026-001"),
-                    _buildProfileItem(Icons.email_outlined, "Email", "itchan@companya.com", canEdit: true),
-                    _buildProfileItem(Icons.phone_android_outlined, "Phone", "+63 912 345 6789", canEdit: true),
-                    _buildProfileItem(Icons.location_on_outlined, "Office", "Main Headquarters"),
+                    _buildSectionLabel('Personal Information'),
+                    _buildProfileItem(Icons.badge_outlined, 'Employee ID', 'EMP-2026-001'),
+                    _buildProfileItem(Icons.email_outlined, 'Email', 'itchan@companya.com', canEdit: true),
+                    _buildProfileItem(Icons.phone_android_outlined, 'Phone', '+63 912 345 6789', canEdit: true),
+                    _buildProfileItem(Icons.location_on_outlined, 'Office', 'Main Headquarters'),
 
                     const Divider(height: 40, thickness: 1),
 
                     // --- SECTION: Employment Details ---
-                    _buildSectionLabel("Employment"),
-                    _buildProfileItem(Icons.event_available, "Employment Status", "Full-Time Regular"),
-                    _buildProfileItem(Icons.schedule, "Work Schedule", "08:00 AM - 05:00 PM"),
-                    _buildProfileItem(Icons.supervisor_account, "Immediate Supervisor", "Engr. Santos"),
+                    _buildSectionLabel('Employment'),
+                    _buildProfileItem(Icons.event_available, 'Employment Status', 'Full-Time Regular'),
+                    _buildProfileItem(Icons.schedule, 'Work Schedule', '08:00 AM - 05:00 PM'),
+                    _buildProfileItem(Icons.supervisor_account, 'Immediate Supervisor', 'Engr. Santos'),
 
                     const Divider(height: 40, thickness: 1),
 
                     // --- SECTION: Settings & Security ---
-                    _buildSectionLabel("Settings & Security"),
-                    _buildMenuOption(Icons.lock_outline, "Change Password"),
-                    _buildMenuOption(Icons.language_outlined, "Language", trailing: "English"),
-                    _buildMenuOption(Icons.notifications_none_outlined, "Notification Preferences"),
+                    _buildSectionLabel('Settings & Security'),
+                    _buildMenuOption(Icons.lock_outline, 'Change Password'),
+                    _buildMenuOption(Icons.language_outlined, 'Language', trailing: 'English'),
+                    _buildMenuOption(Icons.notifications_none_outlined, 'Notification Preferences'),
 
                     const Divider(height: 40, thickness: 1),
 
                     // --- SECTION: Emergency ---
-                    _buildSectionLabel("Emergency Contact"),
-                    _buildProfileItem(Icons.contact_phone_outlined, "Contact Person", "Maria Dela Cruz"),
-                    _buildProfileItem(Icons.family_restroom, "Relationship", "Spouse"),
+                    _buildSectionLabel('Emergency Contact'),
+                    _buildProfileItem(Icons.contact_phone_outlined, 'Contact Person', 'Maria Dela Cruz'),
+                    _buildProfileItem(Icons.family_restroom, 'Relationship', 'Spouse'),
 
                     const Divider(height: 40, thickness: 1),
 
                     // --- SECTION: Support & About ---
-                    _buildSectionLabel("Support"),
-                    _buildMenuOption(Icons.help_outline, "Help Center"),
-                    _buildMenuOption(Icons.privacy_tip_outlined, "Privacy Policy"),
-                    _buildMenuOption(Icons.info_outline, "App Version", trailing: "v1.0.0"),
+                    _buildSectionLabel('Support'),
+                    _buildMenuOption(Icons.help_outline, 'Help Center'),
+                    _buildMenuOption(Icons.privacy_tip_outlined, 'Privacy Policy'),
+                    _buildMenuOption(Icons.info_outline, 'App Version', trailing: 'v1.0.0'),
                     
                     const SizedBox(height: 10), // Small spacer for the bottom of the card
                   ],

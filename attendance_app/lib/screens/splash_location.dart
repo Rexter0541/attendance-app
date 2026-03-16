@@ -124,7 +124,7 @@ class _SplashLocationPageState extends State<SplashLocationPage>
         ),
         const SizedBox(height: 40),
         const Text(
-          "ATTENDANCE APP",
+          'ATTENDANCE APP',
           style: TextStyle(
             fontSize: 26,
             fontWeight: FontWeight.w900,
@@ -244,7 +244,7 @@ class _SplashLocationPageState extends State<SplashLocationPage>
 
         // Static Text Section (No animation rebuild)
         Text(
-          _isSuccess ? "Identity Verified" : "Securing Location",
+          _isSuccess ? 'Identity Verified' : 'Securing Location',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w800,
@@ -255,7 +255,7 @@ class _SplashLocationPageState extends State<SplashLocationPage>
         ),
         const SizedBox(height: 8),
         Text(
-          _isSuccess ? "Welcome back!" : "Syncing with company server...",
+          _isSuccess ? 'Welcome back!' : 'Syncing with company server...',
           style: TextStyle(
             fontSize: 14,
             color: Colors.blueGrey.shade400,

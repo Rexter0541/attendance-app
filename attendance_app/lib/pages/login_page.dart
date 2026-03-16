@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/employee.dart';
 import '../screens/verification_page.dart';
+import '../connection_status_indicator.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -23,7 +24,7 @@ class _LoginPageState extends State<LoginPage> {
   /// LOGIN FUNCTION
   Future<void> login() async {
     if (userController.text.isEmpty || passController.text.isEmpty) {
-      _showError("Please fill in all fields");
+      _showError('Please fill in all fields');
       return;
     }
 
@@ -41,11 +42,11 @@ class _LoginPageState extends State<LoginPage> {
 
       String uid = credential.user!.uid;
 
-      debugPrint("Logged in UID: $uid");
+      debugPrint('Logged in UID: $uid');
 
       /// 2️⃣ Get employee profile from Firestore
       DocumentSnapshot employeeDoc = await FirebaseFirestore.instance
-          .collection("employees")
+          .collection('employees')
           .doc(uid)
           .get();
 
@@ -56,12 +57,12 @@ class _LoginPageState extends State<LoginPage> {
           });
         }
 
-        _showError("Employee profile not found");
+        _showError('Employee profile not found');
         return;
       }
 
       Employee employee = Employee(
-        name: employeeDoc["name"] ?? "Employee",
+        name: employeeDoc['name'] ?? 'Employee',
       );
 
       if (!mounted) return;
@@ -79,8 +80,8 @@ class _LoginPageState extends State<LoginPage> {
     } on FirebaseAuthException catch (e) {
       _handleAuthError(e.code);
     } catch (e, stack) {
-      debugPrint("Login error: $e\n$stack");
-      _showError("Login failed. Check credentials or connection.");
+      debugPrint('Login error: $e\n$stack');
+      _showError('Login failed. Check credentials or connection.');
     }
 
     if (mounted) {
@@ -96,19 +97,19 @@ class _LoginPageState extends State<LoginPage> {
 
     switch (code) {
       case 'user-not-found':
-        message = "User not found";
+        message = 'User not found';
         break;
       case 'wrong-password':
-        message = "Wrong password";
+        message = 'Wrong password';
         break;
       case 'invalid-email':
-        message = "Invalid email";
+        message = 'Invalid email';
         break;
       case 'invalid-credential':
-        message = "Invalid credentials";
+        message = 'Invalid credentials';
         break;
       default:
-        message = "Login failed. Please try again.";
+        message = 'Login failed. Please try again.';
     }
 
     _showError(message);
@@ -148,17 +149,24 @@ class _LoginPageState extends State<LoginPage> {
               Image.asset('assets/icon/app_icon.png', width: 100),
               const SizedBox(height: 15),
 
-              const Text(
-                "Welcome Back",
-                style: TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF1E293B),
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Welcome Back',
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF1E293B),
+                    ),
+                  ),
+                  SizedBox(width: 12),
+                  ConnectionStatusIndicator(),
+                ],
               ),
 
               const Text(
-                "Sign in to continue",
+                'Sign in to continue',
                 style: TextStyle(
                   color: Colors.blueGrey,
                   fontSize: 14,
@@ -185,23 +193,23 @@ class _LoginPageState extends State<LoginPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildLabel("Email"),
+                    _buildLabel('Email'),
                     const SizedBox(height: 8),
 
                     _buildTextField(
                       controller: userController,
-                      hint: "Enter email",
+                      hint: 'Enter email',
                       icon: Icons.person_outline_rounded,
                     ),
 
                     const SizedBox(height: 20),
 
-                    _buildLabel("Password"),
+                    _buildLabel('Password'),
                     const SizedBox(height: 8),
 
                     _buildTextField(
                       controller: passController,
-                      hint: "••••••••",
+                      hint: '••••••••',
                       icon: Icons.lock_outline_rounded,
                       isPassword: true,
                     ),
@@ -228,7 +236,7 @@ class _LoginPageState extends State<LoginPage> {
                                 color: Colors.white,
                               )
                             : const Text(
-                                "SIGN IN",
+                                'SIGN IN',
                                 style: TextStyle(
                                   fontWeight: FontWeight.bold,
                                   letterSpacing: 1.1,

@@ -6,20 +6,20 @@ class EventsPage extends StatelessWidget {
   // ✅ Sample Event Data
   final List<Map<String, dynamic>> sampleEvents = const [
     {
-      "title": "Annual Team Building",
-      "month": "MAR",
-      "day": "15",
-      "location": "Grand Ballroom, Hotel A",
-      "time": "08:00 AM - 05:00 PM",
-      "color": Colors.blue,
+      'title': 'Annual Team Building',
+      'month': 'MAR',
+      'day': '15',
+      'location': 'Grand Ballroom, Hotel A',
+      'time': '08:00 AM - 05:00 PM',
+      'color': Colors.blue,
     },
     {
-      "title": "Monthly General Assembly",
-      "month": "MAR",
-      "day": "28",
-      "location": "Conference Room 2",
-      "time": "01:00 PM - 03:00 PM",
-      "color": Colors.orange,
+      'title': 'Monthly General Assembly',
+      'month': 'MAR',
+      'day': '28',
+      'location': 'Conference Room 2',
+      'time': '01:00 PM - 03:00 PM',
+      'color': Colors.orange,
     },
   ];
 
@@ -28,7 +28,7 @@ class EventsPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF2F3F7),
       appBar: AppBar(
-        title: const Text("Company Events",
+        title: const Text('Company Events',
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
         backgroundColor: const Color(0xFFF2F3F7),
         elevation: 0,
@@ -138,10 +138,10 @@ class EventsPage extends StatelessWidget {
         children: [
           const Icon(Icons.event_note_outlined, size: 100, color: Colors.blue),
           const SizedBox(height: 15),
-          const Text("No Upcoming Events",
+          const Text('No Upcoming Events',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          Text("There are no scheduled events\nat this moment.",
+          Text('There are no scheduled events\nat this moment.',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.grey[600])),
         ],

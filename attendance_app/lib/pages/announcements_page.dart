@@ -6,34 +6,34 @@ class AnnouncementsPage extends StatelessWidget {
   // ✅ Sample Data
   final List<Map<String, String>> sampleAnnouncements = const [
     {
-      "title": "System Maintenance",
-      "date": "Oct 24, 2026",
-      "content": "The workforce system will be down for scheduled maintenance from 10:00 PM to 2:00 AM.",
-      "type": "Urgent"
+      'title': 'System Maintenance',
+      'date': 'Oct 24, 2026',
+      'content': 'The workforce system will be down for scheduled maintenance from 10:00 PM to 2:00 AM.',
+      'type': 'Urgent'
     },
     {
-      "title": "New Holiday Policy",
-      "date": "Oct 22, 2026",
-      "content": "Please review the updated holiday leave policy in the employee handbook. Effective immediately.",
-      "type": "General"
+      'title': 'New Holiday Policy',
+      'date': 'Oct 22, 2026',
+      'content': 'Please review the updated holiday leave policy in the employee handbook. Effective immediately.',
+      'type': 'General'
     },
     {
-      "title": "Team Building Event",
-      "date": "Oct 20, 2026",
-      "content": "Join us for a fun team-building event at the park this Friday. Lunch will be provided.",
-      "type": "General"
+      'title': 'Team Building Event',
+      'date': 'Oct 20, 2026',
+      'content': 'Join us for a fun team-building event at the park this Friday. Lunch will be provided.',
+      'type': 'General'
     },
     {
-      "title": "Performance Review Deadline",
-      "date": "Oct 18, 2026",
-      "content": "All employees are reminded to complete their self-assessment for the quarterly performance review by October 25th.",
-      "type": "Urgent"
+      'title': 'Performance Review Deadline',
+      'date': 'Oct 18, 2026',
+      'content': 'All employees are reminded to complete their self-assessment for the quarterly performance review by October 25th.',
+      'type': 'Urgent'
     },
     {
-      "title": "Office Closure",
-      "date": "Oct 15, 2026",
-      "content": "The office will be closed on November 1st for a national holiday.",
-      "type": "General"
+      'title': 'Office Closure',
+      'date': 'Oct 15, 2026',
+      'content': 'The office will be closed on November 1st for a national holiday.',
+      'type': 'General'
     },
   ];
 
@@ -42,7 +42,7 @@ class AnnouncementsPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF2F3F7),
       appBar: AppBar(
-        title: const Text("Announcements",
+        title: const Text('Announcements',
             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
         backgroundColor: const Color(0xFFF2F3F7),
         elevation: 0,
@@ -116,10 +116,10 @@ class AnnouncementsPage extends StatelessWidget {
         children: [
           const Icon(Icons.campaign_outlined, size: 100, color: Colors.orange),
           const SizedBox(height: 15),
-          const Text("No Announcements",
+          const Text('No Announcements',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          Text("Stay tuned for updates.", 
+          Text('Stay tuned for updates.', 
             textAlign: TextAlign.center, 
             style: TextStyle(color: Colors.grey[600])),
         ],

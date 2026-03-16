@@ -18,19 +18,37 @@ class Dashboard extends StatefulWidget {
 class _DashboardState extends State<Dashboard> {
 
   int index = 0;
-
-  late final pages = [
-    HomePage(employee: widget.employee),
-    const PayrollPage(),
-    const LeavePage(),
-    const AttendanceLogPage(),
-    const ProfilePage(),
-  ];
+  
+  Widget _getSelectedPage(int index) {
+    switch (index) {
+      case 0:
+        return HomePage(employee: widget.employee);
+      case 1:
+        return PayrollPage(
+            employee: widget.employee,
+            currentStatus: 'Inactive', // Default value
+            statusColor: Colors.grey);
+      case 2:
+        return LeavePage(
+            employee: widget.employee,
+            currentStatus: 'Inactive', // Default value
+            statusColor: Colors.grey);
+      case 3:
+        return AttendanceLogPage(
+            employee: widget.employee,
+            currentStatus: 'Inactive', // Default value
+            statusColor: Colors.grey);
+      case 4:
+        return const ProfilePage();
+      default:
+        return HomePage(employee: widget.employee);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: pages[index],
+      body: _getSelectedPage(index),
 
       bottomNavigationBar: BottomNavigationBar(
   currentIndex: index,
@@ -43,15 +61,15 @@ class _DashboardState extends State<Dashboard> {
 
   items: const [
     BottomNavigationBarItem(
-        icon: Icon(Icons.home), label: "Home"),
+        icon: Icon(Icons.home), label: 'Home'),
     BottomNavigationBarItem(
-        icon: Icon(Icons.payments), label: "Payroll"),
+        icon: Icon(Icons.payments), label: 'Payroll'),
     BottomNavigationBarItem(
-        icon: Icon(Icons.event), label: "Leave"),
+        icon: Icon(Icons.event), label: 'Leave'),
     BottomNavigationBarItem(
-        icon: Icon(Icons.list), label: "Logs"),
+        icon: Icon(Icons.list), label: 'Logs'),
     BottomNavigationBarItem(
-        icon: Icon(Icons.person), label: "Profile"),
+        icon: Icon(Icons.person), label: 'Profile'),
   ],
 ),
     );
