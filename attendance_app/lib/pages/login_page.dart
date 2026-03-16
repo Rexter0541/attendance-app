@@ -21,19 +21,18 @@ class _LoginPageState extends State<LoginPage> {
 
   static const Color backgroundColor = Color(0xFFF8FAFC);
 
-  /// LOGIN FUNCTION
+  // =====================================================
+  // LOGIN FUNCTION (UNCHANGED)
+  // =====================================================
   Future<void> login() async {
     if (userController.text.isEmpty || passController.text.isEmpty) {
       _showError('Please fill in all fields');
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
-      /// 1️⃣ Firebase login
       UserCredential credential =
           await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: userController.text.trim(),
@@ -42,15 +41,19 @@ class _LoginPageState extends State<LoginPage> {
 
       String uid = credential.user!.uid;
 
+<<<<<<< HEAD
       debugPrint('Logged in UID: $uid');
 
       /// 2️⃣ Get employee profile from Firestore
+=======
+>>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
       DocumentSnapshot employeeDoc = await FirebaseFirestore.instance
           .collection('employees')
           .doc(uid)
           .get();
 
       if (!employeeDoc.exists) {
+<<<<<<< HEAD
         if (mounted) {
           setState(() {
             _isLoading = false;
@@ -58,16 +61,24 @@ class _LoginPageState extends State<LoginPage> {
         }
 
         _showError('Employee profile not found');
+=======
+        _showError("Employee profile not found");
+        setState(() => _isLoading = false);
+>>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
         return;
       }
 
       Employee employee = Employee(
+<<<<<<< HEAD
         name: employeeDoc['name'] ?? 'Employee',
+=======
+        id: uid,
+        name: employeeDoc["name"] ?? "Employee",
+>>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
       );
 
       if (!mounted) return;
 
-      /// 3️⃣ Navigate to verification page
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
@@ -79,22 +90,21 @@ class _LoginPageState extends State<LoginPage> {
       );
     } on FirebaseAuthException catch (e) {
       _handleAuthError(e.code);
+<<<<<<< HEAD
     } catch (e, stack) {
       debugPrint('Login error: $e\n$stack');
       _showError('Login failed. Check credentials or connection.');
+=======
+    } catch (e) {
+      _showError("Login failed. Check credentials or connection.");
+>>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
     }
 
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
-    }
+    if (mounted) setState(() => _isLoading = false);
   }
 
-  /// HANDLE AUTH ERRORS
   void _handleAuthError(String code) {
     String message;
-
     switch (code) {
       case 'user-not-found':
         message = 'User not found';
@@ -105,18 +115,20 @@ class _LoginPageState extends State<LoginPage> {
       case 'invalid-email':
         message = 'Invalid email';
         break;
+<<<<<<< HEAD
       case 'invalid-credential':
         message = 'Invalid credentials';
         break;
+=======
+>>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
       default:
         message = 'Login failed. Please try again.';
     }
-
     _showError(message);
   }
 
-  /// SHOW ERROR SNACKBAR
   void _showError(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -137,6 +149,9 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
+  // =====================================================
+  // UI
+  // =====================================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -146,7 +161,9 @@ class _LoginPageState extends State<LoginPage> {
           padding: const EdgeInsets.symmetric(horizontal: 30),
           child: Column(
             children: [
-              Image.asset('assets/icon/app_icon.png', width: 100),
+              // ⭐ ANIMATED ICON (MATCHING SPLASH SCREEN)
+              _buildAnimatedHeaderIcon(),
+
               const SizedBox(height: 15),
 
               Row(
@@ -175,7 +192,6 @@ class _LoginPageState extends State<LoginPage> {
 
               const SizedBox(height: 40),
 
-              /// LOGIN CARD
               Container(
                 padding: const EdgeInsets.all(30),
                 decoration: BoxDecoration(
@@ -189,7 +205,6 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ],
                 ),
-
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -219,10 +234,8 @@ class _LoginPageState extends State<LoginPage> {
                     SizedBox(
                       width: double.infinity,
                       height: 55,
-
                       child: ElevatedButton(
                         onPressed: _isLoading ? null : login,
-
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF1E293B),
                           foregroundColor: Colors.white,
@@ -230,10 +243,14 @@ class _LoginPageState extends State<LoginPage> {
                             borderRadius: BorderRadius.circular(16),
                           ),
                         ),
-
                         child: _isLoading
-                            ? const CircularProgressIndicator(
-                                color: Colors.white,
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Text(
                                 'SIGN IN',
@@ -254,35 +271,68 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildLabel(String label) {
-  return Text(
-    label, // ✅ use passed value
-    style: const TextStyle(
-      fontSize: 14,
-      fontWeight: FontWeight.w700,
-      color: Color(0xFF1E293B),
-    ),
-  );
-}
+  // =====================================================
+  // NEW ANIMATED ICON BUILDER
+  // =====================================================
+  Widget _buildAnimatedHeaderIcon() {
+    return TweenAnimationBuilder<double>(
+      duration: const Duration(milliseconds: 1200),
+      tween: Tween(begin: 0.0, end: 1.0),
+      curve: Curves.elasticOut,
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: value,
+          child: Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF1E293B).withAlpha(15),
+                  blurRadius: 25,
+                  offset: const Offset(0, 10),
+                )
+              ],
+            ),
+            child: child,
+          ),
+        );
+      },
+      child: Image.asset('assets/icon/app_icon.png', width: 80),
+    );
+  }
+
+  // =====================================================
+  // INPUT WIDGETS (UNCHANGED)
+  // =====================================================
+  Widget _buildLabel(String label) => Text(
+        label,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          color: Color(0xFF1E293B),
+        ),
+      );
 
   Widget _buildTextField({
     required TextEditingController controller,
     required String hint,
     required IconData icon,
     bool isPassword = false,
-  }) {
-    return TextField(
-      controller: controller,
-      obscureText: isPassword,
-      decoration: InputDecoration(
-        hintText: hint,
-        prefixIcon: Icon(icon),
-        filled: true,
-        fillColor: const Color(0xFFF8FAFC),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(16),
+  }) =>
+      TextField(
+        controller: controller,
+        obscureText: isPassword,
+        decoration: InputDecoration(
+          hintText: hint,
+          prefixIcon: Icon(icon),
+          filled: true,
+          fillColor: const Color(0xFFF8FAFC),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none, // Kept UI clean
+          ),
         ),
-      ),
-    );
-  }
+      );
 }
