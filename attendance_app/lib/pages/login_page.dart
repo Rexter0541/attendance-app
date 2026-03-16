@@ -41,40 +41,20 @@ class _LoginPageState extends State<LoginPage> {
 
       String uid = credential.user!.uid;
 
-<<<<<<< HEAD
-      debugPrint('Logged in UID: $uid');
-
-      /// 2️⃣ Get employee profile from Firestore
-=======
->>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
       DocumentSnapshot employeeDoc = await FirebaseFirestore.instance
           .collection('employees')
           .doc(uid)
           .get();
 
       if (!employeeDoc.exists) {
-<<<<<<< HEAD
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-
-        _showError('Employee profile not found');
-=======
         _showError("Employee profile not found");
         setState(() => _isLoading = false);
->>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
         return;
       }
 
       Employee employee = Employee(
-<<<<<<< HEAD
-        name: employeeDoc['name'] ?? 'Employee',
-=======
         id: uid,
         name: employeeDoc["name"] ?? "Employee",
->>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
       );
 
       if (!mounted) return;
@@ -90,14 +70,8 @@ class _LoginPageState extends State<LoginPage> {
       );
     } on FirebaseAuthException catch (e) {
       _handleAuthError(e.code);
-<<<<<<< HEAD
-    } catch (e, stack) {
-      debugPrint('Login error: $e\n$stack');
-      _showError('Login failed. Check credentials or connection.');
-=======
     } catch (e) {
       _showError("Login failed. Check credentials or connection.");
->>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
     }
 
     if (mounted) setState(() => _isLoading = false);
@@ -115,12 +89,6 @@ class _LoginPageState extends State<LoginPage> {
       case 'invalid-email':
         message = 'Invalid email';
         break;
-<<<<<<< HEAD
-      case 'invalid-credential':
-        message = 'Invalid credentials';
-        break;
-=======
->>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
       default:
         message = 'Login failed. Please try again.';
     }

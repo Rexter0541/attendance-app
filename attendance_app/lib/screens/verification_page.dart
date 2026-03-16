@@ -2,12 +2,8 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-<<<<<<< HEAD
-import 'package:intl/intl.dart';
-=======
 import 'package:geolocator/geolocator.dart';
 import '../models/attendance_session.dart';
->>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
 import '../models/employee.dart';
 import '../pages/timein_page.dart';
 import '../pages/login_page.dart';
@@ -25,13 +21,10 @@ class VerificationPage extends StatefulWidget {
 }
 
 class _VerificationPageState extends State<VerificationPage> {
-<<<<<<< HEAD
-=======
   // SERVICES
   final AttendanceService attendanceService = AttendanceService();
   final LocationService locationService = LocationService();
 
->>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
   int currentStep = 0;
   double progressValue = 0.0;
   final List<String> logs = [];
@@ -41,230 +34,20 @@ class _VerificationPageState extends State<VerificationPage> {
   double distanceFromOffice = 0.0;
   bool inRange = false;
 
-  Timer? progressTimer;
-
   @override
   void initState() {
     super.initState();
-
-<<<<<<< HEAD
-  @override
-  void dispose() {
-    _progressTimer?.cancel();
-    super.dispose();
-  }
-
-  void _initiateQRStep() async {
-    bool start = await _showActionDialog(
-      title: 'QR Scanner Request',
-      message: 'The system requires access to scan your Employee QR Code.',
-      buttonText: 'START SCANNING',
-      icon: Icons.qr_code_scanner,
-      iconColor: const Color(0xFF6C63FF),
-    );
-
-    if (!start) return;
-
-    _addLog('Initializing Camera...');
-    _updateProgress(0.35);
-    await Future.delayed(const Duration(seconds: 2));
-
-    _addLog('QR Code Verified: EMP-8821');
-
-    if (!mounted) return;
-
-    setState(() => currentStep = 1);
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    _initiatePhotoStep();
-  }
-
-  void _initiatePhotoStep() async {
-    bool start = await _showActionDialog(
-      title: 'Photo Capture Request',
-      message: 'QR Verified. We now need to capture a photo for facial verification.',
-      buttonText: 'START CAPTURE',
-      icon: Icons.face_retouching_natural,
-      iconColor: Colors.orange,
-    );
-
-    if (!start) return;
-
-    _addLog('Analyzing Facial Features...');
-    _updateProgress(0.75);
-
-    await Future.delayed(const Duration(seconds: 2));
-
-    _addLog('Photo Captured Successfully.');
-
-    if (!mounted) return;
-
-    setState(() => currentStep = 2);
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    _finalizeVerification();
-  }
-
-  Future<void> _finalizeVerification() async {
-    _addLog('Syncing with Server...');
-    _updateProgress(1.0);
-
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-
-      if (user == null) {
-        _addLog('Error: User authentication failed.');
-        return;
-      }
-
-      final now = DateTime.now();
-      final docId = DateFormat('yyyy-MM-dd').format(now);
-
-      final docRef = FirebaseFirestore.instance
-          .collection('employees')
-          .doc(user.uid)
-          .collection('attendance')
-          .doc(docId);
-
-      final docSnapshot = await docRef.get();
-
-      /// 🚫 Prevent double time-in
-      if (docSnapshot.exists && docSnapshot.data()?['timeIn'] != null) {
-        _addLog('Already timed in today.');
-
-        await Future.delayed(const Duration(seconds: 1));
-
-        if (!mounted) return;
-
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (_) => TimeInPage(employee: widget.employee),
-          ),
-          (route) => false,
-        );
-        return;
-      }
-
-      /// ✅ Save attendance
-      await docRef.set({
-        'timeIn': FieldValue.serverTimestamp(),
-        'timeOut': null,
-        'date': Timestamp.fromDate(now),
-      }, SetOptions(merge: true));
-
-      _addLog('Attendance Logged Successfully.');
-
-      await Future.delayed(const Duration(milliseconds: 800));
-
-      if (!mounted) return;
-
-      /// ✅ Go to TimeInPage
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (_) => TimeInPage(employee: widget.employee),
-        ),
-        (route) => false,
-      );
-    } catch (e) {
-      _addLog('Error: Failed to save attendance data.');
-      debugPrint('Firestore Error: $e');
-    }
-  }
-
-  Future<bool> _showActionDialog({
-    required String title,
-    required String message,
-    required String buttonText,
-    required IconData icon,
-    required Color iconColor,
-  }) async {
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Colors.black, width: 2),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 50, color: iconColor),
-            const SizedBox(height: 15),
-            Text(title,
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 10),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.black54, fontSize: 13),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                onPressed: () => Navigator.pop(context, true),
-                child: Text(
-                  buttonText,
-                  style: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    return result ?? false;
-  }
-
-  void _addLog(String message) {
-    if (mounted) {
-      setState(() {
-        logs.insert(0, message);
-      });
-    }
-  }
-
-  void _updateProgress(double target) {
-    _progressTimer?.cancel();
-
-    _progressTimer =
-        Timer.periodic(const Duration(milliseconds: 20), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-=======
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _checkIfTimedIn();
       if (mounted) {
         _checkGPS();
->>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
       }
-
-      setState(() {
-        progressValue = (progressValue + 0.01).clamp(0.0, target);
-
-        if (progressValue >= target) {
-          timer.cancel();
-        }
-      });
     });
   }
 
   @override
   void dispose() {
-    progressTimer?.cancel();
+    _progressTimer?.cancel();
     super.dispose();
   }
 
@@ -458,57 +241,12 @@ class _VerificationPageState extends State<VerificationPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-<<<<<<< HEAD
-      backgroundColor: const Color(0xFFF2F3F7),
-      body: Center(
-        child: Container(
-          width: MediaQuery.of(context).size.width * 0.85,
-          padding: const EdgeInsets.all(25),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.black, width: 2),
-            boxShadow: const [
-              BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 10,
-                  offset: Offset(4, 4))
-            ],
-          ),
-=======
       backgroundColor: const Color(0xFFF4F7FA),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
->>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
           child: Column(
             children: [
-<<<<<<< HEAD
-              Text(
-                currentStep == 2 ?
-                    'IDENTITY SECURED' :
-                    'PENDING AUTHORIZATION',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2,
-                    fontSize: 11,
-                    color: Colors.grey),
-              ),
-              const SizedBox(height: 20),
-              _buildStepVisual(),
-              const SizedBox(height: 25),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: LinearProgressIndicator(
-                  value: progressValue,
-                  minHeight: 10,
-                  backgroundColor: Colors.grey[200],
-                  valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF6C63FF)),
-                ),
-              ),
-              const SizedBox(height: 25),
-              _buildLogsContainer(),
-=======
               const SizedBox(height: 40),
               _buildHeader(),
               const SizedBox(height: 40),
@@ -520,7 +258,6 @@ class _VerificationPageState extends State<VerificationPage> {
               const Spacer(),
               _buildTerminal(),
               const SizedBox(height: 30),
->>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
             ],
           ),
         ),
@@ -636,24 +373,12 @@ class _VerificationPageState extends State<VerificationPage> {
       ),
       child: ListView.builder(
         itemCount: logs.length,
-<<<<<<< HEAD
-        itemBuilder: (context, index) => Text(
-          '> ${logs[index]}',
-          style: TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 11,
-            color: index == 0 ? Colors.black : Colors.grey,
-            fontWeight:
-                index == 0 ? FontWeight.bold : FontWeight.normal,
-          ),
-=======
         itemBuilder: (_, i) => Text(
           "> ${logs[i]}",
           style: const TextStyle(
               color: Colors.white60,
               fontFamily: 'monospace',
               fontSize: 11),
->>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
         ),
       ),
     );
@@ -663,35 +388,10 @@ class _VerificationPageState extends State<VerificationPage> {
     if (mounted) setState(() => logs.insert(0, message));
   }
 
-<<<<<<< HEAD
-    if (currentStep == 0) {
-      icon = Icons.qr_code_scanner_rounded;
-      label = 'STEP 1: QR SCAN';
-      color = const Color(0xFF6C63FF);
-    } else if (currentStep == 1) {
-      icon = Icons.camera_front_rounded;
-      label = 'STEP 2: PHOTO CAPTURE';
-      color = Colors.orange;
-    } else {
-      icon = Icons.verified_user_rounded;
-      label = 'VERIFIED';
-      color = Colors.green;
-    }
-
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 400),
-      child: Column(
-        key: ValueKey(currentStep),
-        children: [
-          Icon(icon, size: 64, color: color),
-          const SizedBox(height: 10),
-          Text(label,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-=======
   void _updateProgress(double target) {
-    progressTimer?.cancel();
+    _progressTimer?.cancel();
 
-    progressTimer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
+    _progressTimer = Timer.periodic(const Duration(milliseconds: 30), (timer) {
       if (!mounted || progressValue >= target) {
         timer.cancel();
       } else {
@@ -746,7 +446,6 @@ class _VerificationPageState extends State<VerificationPage> {
                 context, _createRoute(const LoginPage())),
             child: const Text("Return to Login"),
           ),
->>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
         ],
       ),
     );

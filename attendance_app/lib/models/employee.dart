@@ -1,10 +1,6 @@
 class Employee {
   String id;
   String name;
-<<<<<<< HEAD
-
-  Employee({required this.name});
-=======
   String status;
 
   DateTime? timeIn;
@@ -20,5 +16,4 @@ class Employee {
     this.timeOut,
     this.attendanceId,
   });
->>>>>>> 90cc72584c540e8d03c0d23fd3012d700a73a45b
 }
