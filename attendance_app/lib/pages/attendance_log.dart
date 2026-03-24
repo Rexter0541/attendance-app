@@ -34,22 +34,16 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
     _selectedMonth = now.month;
   }
 
-  /// Creates a Firestore stream based on the selected filters.
-  Stream<QuerySnapshot> _getAttendanceStream() {
-    if (user == null) return const Stream.empty();
-
-    final firstDay = DateTime(_selectedYear, _selectedMonth, 1);
-    // Go to the first moment of the next month for the 'isLessThan' query.
-    final lastDay = DateTime(_selectedYear, _selectedMonth + 1, 1);
-
+  /// Fetch all attendance logs for this employee
+  Stream<List<Map<String, dynamic>>> _getAttendanceStream() {
     return FirebaseFirestore.instance
-        .collection('employees')
-        .doc(user!.uid)
         .collection('attendance')
-        .where('timeIn', isGreaterThanOrEqualTo: Timestamp.fromDate(firstDay))
-        .where('timeIn', isLessThan: Timestamp.fromDate(lastDay))
+        .where('employeeId', isEqualTo: widget.employee.id)
         .orderBy('timeIn', descending: true)
-        .snapshots();
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) => doc.data()).toList();
+    });
   }
 
   /// Shows a dialog to select the year.
@@ -85,11 +79,24 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 20),
+              if (Navigator.canPop(context))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.arrow_back_ios, size: 18),
+                        Text('Back', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
               _buildHeader(),
               const SizedBox(height: 25),
               _buildFilters(),
               const SizedBox(height: 20),
-              
+
               // --- Main Data Table Container ---
               Expanded(
                 child: Container(
@@ -116,33 +123,54 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
                         ),
                         child: const Row(
                           children: [
-                            Expanded(child: Center(child: _HeaderText('Name'))),
+                            Expanded(child: Center(child: _HeaderText('Date'))),
                             Expanded(child: Center(child: _HeaderText('Time-in'))),
                             Expanded(child: Center(child: _HeaderText('Time-out'))),
-                            Expanded(child: Center(child: _HeaderText('Date'))),
+                            Expanded(child: Center(child: _HeaderText('Status'))),
                           ],
                         ),
                       ),
-                      
-                      // ✅ Attendance List Body
-                      StreamBuilder<QuerySnapshot>(
-                        stream: _getAttendanceStream(),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const Expanded(child: Center(child: CircularProgressIndicator()));
-                          }
-                          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                            return Expanded(child: _buildEmptyState());
-                          }
 
-                          return Expanded(child: _buildList(snapshot.data!.docs));
-                        },
+                      // ✅ Attendance List Body
+                      Expanded(
+                        child: StreamBuilder<List<Map<String, dynamic>>>(
+                          stream: _getAttendanceStream(),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+
+                            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                              return _buildEmptyState();
+                            }
+
+                            // Filter logs by selected year & month locally
+                            final filteredLogs = snapshot.data!.where((log) {
+                              final timeIn = log['timeIn'] != null
+                                  ? (log['timeIn'] as Timestamp).toDate()
+                                  : null;
+                              if (timeIn == null) return false;
+                              return timeIn.year == _selectedYear && timeIn.month == _selectedMonth;
+                            }).toList();
+
+                            if (filteredLogs.isEmpty) {
+                              return _buildEmptyState();
+                            }
+
+                            return ListView.builder(
+                              itemCount: filteredLogs.length,
+                              itemBuilder: (context, index) {
+                                return _buildDataRow(filteredLogs[index]);
+                              },
+                            );
+                          },
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 20), 
+              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -159,19 +187,35 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
     );
   }
 
-  // ✅ Helper to build individual data rows
   Widget _buildDataRow(Map<String, dynamic> data) {
-    // Format Data
-    final String name = widget.employee.name;
-    final String date = data['timeIn'] != null 
-        ? DateFormat('MMM dd').format((data['timeIn'] as Timestamp).toDate()) 
+    // final String name = widget.employee.name; // Removed: Redundant since header has employee name
+    final String date = data['timeIn'] != null
+        ? DateFormat('MMM dd').format((data['timeIn'] as Timestamp).toDate())
         : '--';
-    final String timeIn = data['timeIn'] != null 
-        ? DateFormat('h:mm a').format((data['timeIn'] as Timestamp).toDate()) 
+    final String timeIn = data['timeIn'] != null
+        ? DateFormat('h:mm a').format((data['timeIn'] as Timestamp).toDate())
         : '--';
-    final String timeOut = data['timeOut'] != null 
-        ? DateFormat('h:mm a').format((data['timeOut'] as Timestamp).toDate()) 
+    final String timeOut = data['timeOut'] != null
+        ? DateFormat('h:mm a').format((data['timeOut'] as Timestamp).toDate())
         : '--';
+
+    // Logic para sa Status (Late vs On Time)
+    String status = '--';
+    Color statusColor = Colors.grey;
+
+    if (data['timeIn'] != null) {
+      final DateTime dt = (data['timeIn'] as Timestamp).toDate();
+      // Set 8:00 AM as the official start time
+      final DateTime officialStart = DateTime(dt.year, dt.month, dt.day, 8, 0);
+
+      if (dt.isAfter(officialStart)) {
+        status = 'Late';
+        statusColor = Colors.red;
+      } else {
+        status = 'On Time';
+        statusColor = Colors.green;
+      }
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 15),
@@ -180,10 +224,28 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
       ),
       child: Row(
         children: [
-          Expanded(child: Center(child: _DataText(name))),
+          Expanded(child: Center(child: _DataText(date, fontWeight: FontWeight.bold))),
           Expanded(child: Center(child: _DataText(timeIn, color: Colors.blue))),
           Expanded(child: Center(child: _DataText(timeOut, color: Colors.orange))),
-          Expanded(child: Center(child: _DataText(date, fontWeight: FontWeight.bold))),
+          Expanded(
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withAlpha(30),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  status,
+                  style: TextStyle(
+                    color: statusColor,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -196,8 +258,10 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Employee: ${widget.employee.name}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            const Text('Location: Company A', style: TextStyle(color: Colors.black54, fontSize: 12)),
+            Text('Employee: ${widget.employee.name}',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            const Text('Location: Company A',
+                style: TextStyle(color: Colors.black54, fontSize: 12)),
           ],
         ),
         Row(
@@ -230,7 +294,8 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
           child: InkWell(
             onTap: _selectMonth,
             child: _buildFilterDropdown(
-                DateFormat('MMMM').format(DateTime(0, _selectedMonth)), Icons.keyboard_arrow_down),
+                DateFormat('MMMM').format(DateTime(0, _selectedMonth)),
+                Icons.keyboard_arrow_down),
           ),
         ),
       ],
@@ -248,7 +313,8 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          Text(value,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
           Icon(icon, size: 18),
         ],
       ),
@@ -261,13 +327,14 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
       children: [
         Icon(Icons.inventory_2_outlined, size: 80, color: Colors.grey.shade300),
         const SizedBox(height: 10),
-        const Text('No Logs Found', style: TextStyle(color: Colors.grey, fontSize: 14)),
+        const Text('No Logs Found',
+            style: TextStyle(color: Colors.grey, fontSize: 14)),
       ],
     );
   }
 }
 
-/// A simple dialog to pick a year.
+/// Year Picker Dialog
 class _YearPickerDialog extends StatelessWidget {
   final int initialYear;
   const _YearPickerDialog({required this.initialYear});
@@ -310,7 +377,7 @@ class _YearPickerDialog extends StatelessWidget {
   }
 }
 
-/// A simple dialog to pick a month.
+/// Month Picker Dialog
 class _MonthPickerDialog extends StatelessWidget {
   final int initialMonth;
   const _MonthPickerDialog({required this.initialMonth});
@@ -333,8 +400,11 @@ class _MonthPickerDialog extends StatelessWidget {
             return ListTile(
               title: Text(monthName,
                   style: TextStyle(
-                      fontWeight: month == initialMonth ? FontWeight.bold : FontWeight.normal,
-                      color: month == initialMonth ? _AttendanceLogPageState.primaryColor : null)),
+                      fontWeight:
+                          month == initialMonth ? FontWeight.bold : FontWeight.normal,
+                      color: month == initialMonth
+                          ? _AttendanceLogPageState.primaryColor
+                          : null)),
               onTap: () => Navigator.of(context).pop(month),
             );
           },
@@ -351,7 +421,8 @@ class _HeaderText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12));
+    return Text(text,
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12));
   }
 }
 

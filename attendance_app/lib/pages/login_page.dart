@@ -18,6 +18,7 @@ class _LoginPageState extends State<LoginPage> {
   final passController = TextEditingController();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
   static const Color backgroundColor = Color(0xFFF8FAFC);
 
@@ -194,7 +195,13 @@ class _LoginPageState extends State<LoginPage> {
                       controller: passController,
                       hint: '••••••••',
                       icon: Icons.lock_outline_rounded,
-                      isPassword: true,
+                      obscureText: _obscurePassword,
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                            _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                            color: Colors.grey),
+                        onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                      ),
                     ),
 
                     const SizedBox(height: 25),
@@ -287,14 +294,16 @@ class _LoginPageState extends State<LoginPage> {
     required TextEditingController controller,
     required String hint,
     required IconData icon,
-    bool isPassword = false,
+    bool obscureText = false,
+    Widget? suffixIcon,
   }) =>
       TextField(
         controller: controller,
-        obscureText: isPassword,
+        obscureText: obscureText,
         decoration: InputDecoration(
           hintText: hint,
           prefixIcon: Icon(icon),
+          suffixIcon: suffixIcon,
           filled: true,
           fillColor: const Color(0xFFF8FAFC),
           border: OutlineInputBorder(

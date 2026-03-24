@@ -39,7 +39,7 @@ class _DashboardState extends State<Dashboard> {
             currentStatus: 'Inactive', // Default value
             statusColor: Colors.grey);
       case 4:
-        return const ProfilePage();
+        return ProfilePage(employee: widget.employee);
       default:
         return HomePage(employee: widget.employee);
     }

@@ -48,46 +48,61 @@ class _PayrollPageState extends State<PayrollPage> {
 
     List<Map<String, dynamic>> results = [];
     final now = DateTime.now();
+    // Use a date-only value for today to correctly determine if a period has passed.
+    final today = DateTime(now.year, now.month, now.day);
 
-    // --- Period 1: 1st to 15th ---
-    final period1Start = DateTime(year, month, 1);
-    final period1End = DateTime(year, month, 15);
-    if (now.isAfter(period1Start) || now.isAtSameMomentAs(period1Start)) {
-      final period1Result = await _calculatePayForPeriod(period1Start, period1End);
-      final netPay1 = period1Result['total'];
-      final daily1 = period1Result['daily'];
-      await _savePayrollToFirestore(period1Start, period1End, netPay1);
-      results.add({
-        'netpay': netPay1.toStringAsFixed(2),
-        'month': DateFormat('MMMM').format(period1Start),
-        'date': DateFormat('MMM dd, yyyy').format(period1End),
-        'status': now.isAfter(period1End) ? 'Calculated' : 'Processing',
-        'daily': daily1,
-      });
-    }
+    try {
+      // --- Period 1: 1st to 15th ---
+      final period1Start = DateTime(year, month, 1);
+      final period1End = DateTime(year, month, 15);
+      final isFinal1 = today.isAfter(period1End); // The period is final only the day AFTER it ends.
 
-    // --- Period 2: 16th to end of month ---
-    final period2Start = DateTime(year, month, 16);
-    final period2End = DateTime(year, month + 1, 0);
-    if (now.isAfter(period2Start) || now.isAtSameMomentAs(period2Start)) {
-      final period2Result = await _calculatePayForPeriod(period2Start, period2End);
-      final netPay2 = period2Result['total'];
-      final daily2 = period2Result['daily'];
-      await _savePayrollToFirestore(period2Start, period2End, netPay2);
-      results.add({
-        'netpay': netPay2.toStringAsFixed(2),
-        'month': DateFormat('MMMM').format(period2Start),
-        'date': DateFormat('MMM dd, yyyy').format(period2End),
-        'status': now.isAfter(period2End) ? 'Calculated' : 'Processing',
-        'daily': daily2,
-      });
-    }
+      if (now.isAfter(period1Start) || now.isAtSameMomentAs(period1Start)) { // Still show processing data
+        final period1Result = await _calculatePayForPeriod(period1Start, period1End);
+        final netPay1 = period1Result['total'];
+        final daily1 = period1Result['daily'];
+        await _savePayrollToFirestore(period1Start, period1End, netPay1, isFinal1);
+        results.add({
+          'netpay': netPay1.toStringAsFixed(2),
+          'month': DateFormat('MMMM').format(period1Start),
+          'date': DateFormat('MMM dd, yyyy').format(period1End),
+          'status': isFinal1 ? 'Calculated' : 'Processing',
+          'daily': daily1,
+        });
+      }
 
-    if (mounted) {
-      setState(() {
-        _payrollResults = results.reversed.toList();
-        _isLoading = false;
-      });
+      // --- Period 2: 16th to end of month ---
+      final period2Start = DateTime(year, month, 16);
+      final period2End = DateTime(year, month + 1, 0); // 0 day of next month gets last day of current month
+      final isFinal2 = today.isAfter(period2End);
+
+      if (now.isAfter(period2Start) || now.isAtSameMomentAs(period2Start)) { // Still show processing data
+        final period2Result = await _calculatePayForPeriod(period2Start, period2End);
+        final netPay2 = period2Result['total'];
+        final daily2 = period2Result['daily'];
+        await _savePayrollToFirestore(period2Start, period2End, netPay2, isFinal2);
+        results.add({
+          'netpay': netPay2.toStringAsFixed(2),
+          'month': DateFormat('MMMM').format(period2Start),
+          'date': DateFormat('MMM dd, yyyy').format(period2End),
+          'status': isFinal2 ? 'Calculated' : 'Processing',
+          'daily': daily2,
+        });
+      }
+
+      if (mounted) {
+        setState(() {
+          _payrollResults = results.reversed.toList();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error calculating payroll: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -151,7 +166,7 @@ class _PayrollPageState extends State<PayrollPage> {
 
   /// SAVE PAYROLL: Saves to employees/{id}/payroll sub-collection
   Future<void> _savePayrollToFirestore(
-      DateTime periodStart, DateTime periodEnd, double netPay) async {
+      DateTime periodStart, DateTime periodEnd, double netPay, bool isFinal) async {
     
     final docId = '${periodStart.year}-${periodStart.month.toString().padLeft(2, '0')}-${periodStart.day == 1 ? '1' : '2'}';
 
@@ -168,14 +183,48 @@ class _PayrollPageState extends State<PayrollPage> {
         'periodEnd': periodEnd,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
+      // Create a notification if the payroll is final/calculated
+      if (isFinal) {
+        await _createPayrollNotificationIfNeeded(docId, periodEnd, netPay);
+      }
     } catch (e) {
       debugPrint('Error saving payroll: $e');
     }
   }
 
+  /// Creates a notification for the user about their payroll, but only if one hasn't been sent before.
+  Future<void> _createPayrollNotificationIfNeeded(String payrollDocId, DateTime periodEnd, double netPay) async {
+    if (user == null) return;
+
+    final payrollDocRef = FirebaseFirestore.instance.collection('employees').doc(user!.uid).collection('payroll').doc(payrollDocId);
+
+    // 1. Check if a notification has already been sent for this payroll document.
+    final payrollDoc = await payrollDocRef.get();
+    if (payrollDoc.exists && payrollDoc.data()?['notificationSent'] == true) {
+      // If the document exists and the notification has already been sent, do nothing.
+      return;
+    }
+
+    // 2. If not sent, create the notification.
+    await FirebaseFirestore.instance.collection('notifications').add({
+      'recipientId': user!.uid,
+      'title': 'Payroll Processed',
+      'body': 'Your payslip for the period ending ${DateFormat('MMM dd, yyyy').format(periodEnd)} amounting to ₱${netPay.toStringAsFixed(2)} is now available.',
+      'type': 'payroll',
+      'isRead': false,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
+    // 3. Mark this payroll document as having its notification sent.
+    await payrollDocRef.update({'notificationSent': true});
+    debugPrint('Payroll notification sent for doc: $payrollDocId');
+  }
+
   // --- UI Logic (Headers, Rows, Filters - No logic changes below) ---
 
   static const Color bgColor = Color(0xFFF2F3F7);
+  static const Color primaryColor = Color(0xFF6C63FF);
 
   @override
   Widget build(BuildContext context) {
@@ -188,6 +237,19 @@ class _PayrollPageState extends State<PayrollPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 20),
+              if (Navigator.canPop(context))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.arrow_back_ios, size: 18),
+                        Text('Back', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
               _buildHeader(),
               const SizedBox(height: 25),
               _buildFilters(),
@@ -399,12 +461,38 @@ class _YearPickerDialog extends StatelessWidget {
   final int initialYear;
   const _YearPickerDialog({required this.initialYear});
   @override Widget build(BuildContext context) {
-    final List<int> years = List.generate(5, (index) => DateTime.now().year - index);
+    final int currentYear = DateTime.now().year;
+    final List<int> years =
+        List.generate(6, (index) => currentYear - 5 + index).reversed.toList();
+
     return AlertDialog(
-      title: const Text('Select Year'),
-      content: SizedBox(width: double.maxFinite, child: ListView.builder(shrinkWrap: true, itemCount: years.length, itemBuilder: (context, index) {
-        return ListTile(title: Text(years[index].toString()), onTap: () => Navigator.pop(context, years[index]));
-      })),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      title: const Text('Select Year',
+          style: TextStyle(fontWeight: FontWeight.bold)),
+      content: SizedBox(
+        width: 100,
+        height: 250,
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: years.length,
+          itemBuilder: (context, index) {
+            final year = years[index];
+            return ListTile(
+              title: Text(
+                year.toString(),
+                style: TextStyle(
+                  fontWeight:
+                      year == initialYear ? FontWeight.bold : FontWeight.normal,
+                  color: year == initialYear
+                      ? _PayrollPageState.primaryColor
+                      : null,
+                ),
+              ),
+              onTap: () => Navigator.of(context).pop(year),
+            );
+          },
+        ),
+      ),
     );
   }
 }
@@ -414,10 +502,31 @@ class _MonthPickerDialog extends StatelessWidget {
   const _MonthPickerDialog({required this.initialMonth});
   @override Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Select Month'),
-      content: SizedBox(width: double.maxFinite, child: ListView.builder(shrinkWrap: true, itemCount: 12, itemBuilder: (context, index) {
-        return ListTile(title: Text(DateFormat('MMMM').format(DateTime(0, index + 1))), onTap: () => Navigator.pop(context, index + 1));
-      })),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      title: const Text('Select Month',
+          style: TextStyle(fontWeight: FontWeight.bold)),
+      content: SizedBox(
+        width: 100,
+        height: 350,
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: 12,
+          itemBuilder: (context, index) {
+            final month = index + 1;
+            final monthName = DateFormat('MMMM').format(DateTime(0, month));
+            return ListTile(
+              title: Text(monthName,
+                  style: TextStyle(
+                      fontWeight:
+                          month == initialMonth ? FontWeight.bold : FontWeight.normal,
+                      color: month == initialMonth
+                          ? _PayrollPageState.primaryColor
+                          : null)),
+              onTap: () => Navigator.of(context).pop(month),
+            );
+          },
+        ),
+      ),
     );
   }
 }

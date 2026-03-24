@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../services/location_service.dart';
 import '../models/employee.dart';
+import 'package:intl/intl.dart';
 import 'home_page.dart';
 
 class TimeInPage extends StatefulWidget {
@@ -163,6 +164,26 @@ class _TimeInPageState extends State<TimeInPage> {
         .collection('attendance')
         .doc(widget.employee.attendanceId)
         .update({'timeIn': FieldValue.serverTimestamp(), 'status': 'Timed In'});
+
+    // Create a notification for time-in
+    final now = DateTime.now();
+    final officialStart = DateTime(now.year, now.month, now.day, 8, 15); // 8:15 AM threshold
+    final isLate = now.isAfter(officialStart);
+
+    final title = isLate ? 'You are Late' : 'Time-In Successful';
+    final body = isLate
+        ? 'You clocked in at ${DateFormat('h:mm a').format(now)}. Please be mindful of your schedule.'
+        : 'You clocked in at ${DateFormat('h:mm a').format(now)}. Have a productive day!';
+    final type = isLate ? 'attendance_late' : 'attendance_present';
+
+    await FirebaseFirestore.instance.collection('notifications').add({
+      'recipientId': widget.employee.id,
+      'title': title,
+      'body': body,
+      'type': type,
+      'isRead': false,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> _recordTimeOut(LocationResult result) async {
