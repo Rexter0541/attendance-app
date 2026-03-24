@@ -29,10 +29,13 @@ class _TimeInPageState extends State<TimeInPage> {
   @override
   void initState() {
     super.initState();
+    // 1. Start the digital clock
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => now = DateTime.now());
     });
-    _listenAttendance();
+
+    // 2. Resolve the Attendance ID and start listening
+    _initAttendanceSession();
   }
 
   @override
@@ -43,20 +46,53 @@ class _TimeInPageState extends State<TimeInPage> {
   }
 
   // =====================================================
-  // LISTEN TO ATTENDANCE DOCUMENT
+  // INITIALIZE SESSION (FIX FOR BLANK TIMES ON RESTART)
   // =====================================================
-  Future<void> _listenAttendance() async {
-    if (widget.employee.attendanceId == null) {
-      loadingAttendance = false;
+  Future<void> _initAttendanceSession() async {
+    // If we already have the ID from the previous screen, use it immediately
+    if (widget.employee.attendanceId != null) {
+      _listenAttendance(widget.employee.attendanceId!);
       return;
     }
 
+    // Otherwise, search Firestore for today's active record
+    try {
+      final today = DateTime.now();
+      final startOfDay = DateTime(today.year, today.month, today.day);
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection('attendance')
+          .where('employeeId', isEqualTo: widget.employee.id)
+          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        _listenAttendance(snapshot.docs.first.id);
+      } else {
+        if (mounted) setState(() => loadingAttendance = false);
+      }
+    } catch (e) {
+      debugPrint('Error finding session: $e');
+      if (mounted) setState(() => loadingAttendance = false);
+    }
+  }
+
+  // =====================================================
+  // LISTEN TO ATTENDANCE DOCUMENT
+  // =====================================================
+  void _listenAttendance(String attendanceId) {
+    attendanceListener?.cancel();
     attendanceListener = FirebaseFirestore.instance
         .collection('attendance')
-        .doc(widget.employee.attendanceId)
+        .doc(attendanceId)
         .snapshots()
         .listen((doc) {
-      if (!doc.exists) return;
+      if (!doc.exists) {
+        if (mounted) setState(() => loadingAttendance = false);
+        return;
+      }
+      
       final data = doc.data();
       if (!mounted) return;
 
@@ -72,9 +108,6 @@ class _TimeInPageState extends State<TimeInPage> {
     });
   }
 
-  // =====================================================
-  // FORMAT TIME
-  // =====================================================
   String formatTime(DateTime time) {
     final hour = time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
     final minute = time.minute.toString().padLeft(2, '0');
@@ -92,14 +125,23 @@ class _TimeInPageState extends State<TimeInPage> {
 
     _addLog('Recording Time In...');
     await _animateFixedDuration(const Duration(seconds: 1));
-    await _recordTimeIn();
-    _addLog('Clock in recorded successfully ✅');
+    
+    // Create reference and get ID
+    final docRef = FirebaseFirestore.instance.collection('attendance').doc(widget.employee.attendanceId);
+    
+    await docRef.update({
+      'timeIn': FieldValue.serverTimestamp(), 
+      'status': 'Timed In',
+      'timestamp': FieldValue.serverTimestamp(),
+    });
 
+    _addLog('Clock in recorded successfully ✅');
+    _listenAttendance(docRef.id); // Ensure we are listening to this specific doc
     setState(() => isProcessing = false);
   }
 
   // =====================================================
-  // HANDLE TIME OUT (USING LOCATION SERVICE)
+  // HANDLE TIME OUT
   // =====================================================
   Future<void> handleTimeOut() async {
     logs.clear();
@@ -133,16 +175,12 @@ class _TimeInPageState extends State<TimeInPage> {
       _showErrorDialog('Location Error', e.toString().replaceAll('Exception:', ''));
     }
 
-    setState(() => isProcessing = false);
+    if (mounted) setState(() => isProcessing = false);
   }
 
-  // =====================================================
-  // PROGRESS ANIMATION
-  // =====================================================
   Future<void> _animateFixedDuration(Duration duration) async {
-    final steps = 50;
+    const steps = 50;
     final interval = (duration.inMilliseconds / steps).round();
-
     for (int i = 1; i <= steps; i++) {
       if (!mounted) return;
       await Future.delayed(Duration(milliseconds: interval));
@@ -155,16 +193,6 @@ class _TimeInPageState extends State<TimeInPage> {
     setState(() => logs.insert(0, message));
   }
 
-  // =====================================================
-  // FIRESTORE FUNCTIONS
-  // =====================================================
-  Future<void> _recordTimeIn() async {
-    await FirebaseFirestore.instance
-        .collection('attendance')
-        .doc(widget.employee.attendanceId)
-        .update({'timeIn': FieldValue.serverTimestamp(), 'status': 'Timed In'});
-  }
-
   Future<void> _recordTimeOut(LocationResult result) async {
     await FirebaseFirestore.instance
         .collection('attendance')
@@ -172,6 +200,7 @@ class _TimeInPageState extends State<TimeInPage> {
         .update({
       'timeOut': FieldValue.serverTimestamp(),
       'status': 'Timed Out',
+      'timestamp': FieldValue.serverTimestamp(),
       'coords': {
         'lat': result.position.latitude,
         'lng': result.position.longitude,
@@ -180,13 +209,11 @@ class _TimeInPageState extends State<TimeInPage> {
     });
   }
 
-  // =====================================================
-  // DIALOGS
-  // =====================================================
   void _showOutOfRangeDialog(double distance) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Out of Range', style: TextStyle(color: Colors.red)),
         content: Text('You are ${distance.toStringAsFixed(2)} meters away from the office.'),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
@@ -198,6 +225,7 @@ class _TimeInPageState extends State<TimeInPage> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(title, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
         content: Text(message),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
@@ -205,9 +233,6 @@ class _TimeInPageState extends State<TimeInPage> {
     );
   }
 
-  // =====================================================
-  // UI
-  // =====================================================
   @override
   Widget build(BuildContext context) {
     if (loadingAttendance) return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -215,9 +240,11 @@ class _TimeInPageState extends State<TimeInPage> {
     return Scaffold(
       backgroundColor: const Color(0xffF3F4F6),
       body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: _buildCard(),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: _buildCard(),
+          ),
         ),
       ),
     );
@@ -244,14 +271,28 @@ class _TimeInPageState extends State<TimeInPage> {
           const SizedBox(height: 10),
           _timeDisplay('Time Out', timeOutRecorded),
           const SizedBox(height: 30),
-          LinearProgressIndicator(value: progressValue, minHeight: 8),
+          LinearProgressIndicator(
+            value: progressValue, 
+            minHeight: 8, 
+            backgroundColor: Colors.grey.shade200,
+            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xff6366F1)),
+          ),
           const SizedBox(height: 20),
-          Column(children: logs.map((e) => Text('> $e', style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))).toList()),
+          Container(
+            height: 60,
+            width: double.infinity,
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(8)),
+            child: ListView(
+              children: logs.map((e) => Text('> $e', style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.blueGrey))).toList(),
+            ),
+          ),
           const SizedBox(height: 20),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
                   icon: const Icon(Icons.login),
                   label: const Text('Time In'),
                   onPressed: timeInRecorded != null || isProcessing ? null : handleTimeIn,
@@ -260,6 +301,11 @@ class _TimeInPageState extends State<TimeInPage> {
               const SizedBox(width: 15),
               Expanded(
                 child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xff6366F1),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
                   icon: const Icon(Icons.logout),
                   label: const Text('Time Out'),
                   onPressed: timeInRecorded == null || timeOutRecorded != null || isProcessing ? null : handleTimeOut,
@@ -270,11 +316,11 @@ class _TimeInPageState extends State<TimeInPage> {
           const SizedBox(height: 15),
           SizedBox(
             width: double.infinity,
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.dashboard),
-              label: const Text('Dashboard'),
+            child: TextButton.icon(
+              icon: const Icon(Icons.dashboard_outlined),
+              label: const Text('Back to Dashboard'),
               onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => HomePage(employee: widget.employee)));
+                Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(employee: widget.employee)));
               },
             ),
           ),

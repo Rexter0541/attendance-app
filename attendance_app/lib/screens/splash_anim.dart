@@ -2,7 +2,10 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ⭐ Added
 import '../pages/login_page.dart';
+import '../pages/home_page.dart';   // ⭐ Added
+import '../models/employee.dart';  // ⭐ Added
 
 class SplashAnim extends StatefulWidget {
   const SplashAnim({super.key});
@@ -17,7 +20,7 @@ class _SplashAnimState extends State<SplashAnim> with TickerProviderStateMixin {
   late Animation<Offset> _logoSlide;
   late Animation<double> _textOpacity;
 
-  // 🎨 OFFICIAL LGU PALETTE (Trustworthy Slate & Deep Indigo)
+  // 🎨 OFFICIAL LGU PALETTE
   static const Color kPrimaryText = Color(0xFF1E293B);   
   static const Color kAccentColor = Color(0xFF4F46E5);   
   static const Color kBgTop = Color(0xFFF8FAFC);         
@@ -32,17 +35,14 @@ class _SplashAnimState extends State<SplashAnim> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 2500),
     );
 
-    // 1. Logo fades in
     _logoOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _mainController, curve: const Interval(0.0, 0.5, curve: Curves.easeOut)),
     );
 
-    // 2. Logo slides up slightly (Elegant, not bouncy)
     _logoSlide = Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(
       CurvedAnimation(parent: _mainController, curve: const Interval(0.0, 0.5, curve: Curves.easeOutCubic)),
     );
 
-    // 3. Text fades in later
     _textOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _mainController, curve: const Interval(0.4, 0.9, curve: Curves.easeIn)),
     );
@@ -54,12 +54,11 @@ class _SplashAnimState extends State<SplashAnim> with TickerProviderStateMixin {
   // =====================================================
   // ⚡ CUSTOM SMOOTH TRANSITION ROUTE
   // =====================================================
-
   Route _createRoute(Widget page) {
     return PageRouteBuilder(
       pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        const begin = Offset(0.0, 0.05); // Subtle slide up
+        const begin = Offset(0.0, 0.05); 
         const end = Offset.zero;
         const curve = Curves.easeOutCubic;
 
@@ -74,26 +73,47 @@ class _SplashAnimState extends State<SplashAnim> with TickerProviderStateMixin {
           ),
         );
       },
-      transitionDuration: const Duration(milliseconds: 800), // Slightly slower for splash exit
+      transitionDuration: const Duration(milliseconds: 800), 
     );
   }
 
+ // =====================================================
+  // 🧭 UPDATED NAVIGATION LOGIC (WITH MOUNTED CHECKS)
+  // =====================================================
   Future<void> _runNavigation() async {
+    // Wait for splash animation to feel substantial
     await Future.delayed(const Duration(seconds: 4));
+    
+    // ⭐ FIX 1: Check mounted after the delay
     if (!mounted) return;
 
-    // Updated to use the smooth transition helper
+    // Check SharedPreferences for existing session
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+
+    // ⭐ FIX 2: Check mounted again after getting SharedPreferences
+    if (!mounted) return;
+
+    if (isLoggedIn) {
+      final String? savedId = prefs.getString('userId');
+      final String? savedName = prefs.getString('userName');
+
+      if (savedId != null && savedName != null) {
+        // Redirect to Home directly if session exists
+        Navigator.of(context).pushReplacement(
+          _createRoute(HomePage(
+            employee: Employee(id: savedId, name: savedName),
+          )),
+        );
+        return;
+      }
+    }
+
+    // Default: Go to Login Page
     Navigator.of(context).pushReplacement(
       _createRoute(const LoginPage()),
     );
   }
-
-  @override
-  void dispose() {
-    _mainController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -109,7 +129,6 @@ class _SplashAnimState extends State<SplashAnim> with TickerProviderStateMixin {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // 🚀 STAGE 1: LOGO
             SlideTransition(
               position: _logoSlide,
               child: FadeTransition(
@@ -117,10 +136,7 @@ class _SplashAnimState extends State<SplashAnim> with TickerProviderStateMixin {
                 child: _buildProLogo(),
               ),
             ),
-
             const SizedBox(height: 50),
-
-            // 🚀 STAGE 2: TEXT & ACCENT
             FadeTransition(
               opacity: _textOpacity,
               child: Column(
@@ -130,12 +146,11 @@ class _SplashAnimState extends State<SplashAnim> with TickerProviderStateMixin {
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
-                      letterSpacing: 10.0, // Clean, airy spacing
+                      letterSpacing: 10.0,
                       color: kPrimaryText,
                     ),
                   ),
                   const SizedBox(height: 20),
-                  // Small clean progress indicator instead of a static bar
                   SizedBox(
                     width: 40,
                     child: LinearProgressIndicator(
@@ -160,7 +175,6 @@ class _SplashAnimState extends State<SplashAnim> with TickerProviderStateMixin {
         color: Colors.white,
         shape: BoxShape.circle,
         boxShadow: [
-          // Multi-layered shadow for high-end depth
           BoxShadow(
             color: kPrimaryText.withAlpha(20),
             blurRadius: 40,

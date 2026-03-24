@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart'; 
 
 import '../models/employee.dart';
 import '../screens/verification_page.dart';
@@ -22,7 +23,7 @@ class _LoginPageState extends State<LoginPage> {
   static const Color backgroundColor = Color(0xFFF8FAFC);
 
   // =====================================================
-  // LOGIN FUNCTION (UNCHANGED)
+  // LOGIN FUNCTION (UPDATED FOR ADMIN & EMPLOYEE COLLECTIONS)
   // =====================================================
   Future<void> login() async {
     if (userController.text.isEmpty || passController.text.isEmpty) {
@@ -41,33 +42,62 @@ class _LoginPageState extends State<LoginPage> {
 
       String uid = credential.user!.uid;
 
+      // 1. 🛡️ Check if the user is in the 'Admin' collection
+      DocumentSnapshot adminDoc = await FirebaseFirestore.instance
+          .collection('Admin') 
+          .doc(uid)
+          .get();
+
+      if (adminDoc.exists) {
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('isLoggedIn', true);
+        await prefs.setString('userId', uid);
+        await prefs.setString('userName', adminDoc.get('name') ?? 'Administrator');
+        await prefs.setString('userRole', 'admin');
+
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, '/admin');
+        return; 
+      }
+
+      // 2. 👥 Check if the user is in the 'employees' collection
       DocumentSnapshot employeeDoc = await FirebaseFirestore.instance
           .collection('employees')
           .doc(uid)
           .get();
 
-      if (!employeeDoc.exists) {
-        _showError('Employee profile not found');
-        setState(() => _isLoading = false);
-        return;
+      if (employeeDoc.exists) {
+        String name = employeeDoc.get('name') ?? 'Employee';
+        String role = (employeeDoc.get('role') ?? 'employee').toString().toLowerCase();
+
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('isLoggedIn', true);
+        await prefs.setString('userId', uid);
+        await prefs.setString('userName', name);
+        await prefs.setString('userRole', role);
+
+        Employee employee = Employee(
+          id: uid,
+          name: name,
+        );
+
+        if (!mounted) return;
+
+        if (role == 'admin') {
+          Navigator.pushReplacementNamed(context, '/admin');
+        } else {
+          Navigator.pushReplacement(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (_, _, _) => VerificationPage(employee: employee),
+              transitionsBuilder: (context, anim, secAnim, child) =>
+                  FadeTransition(opacity: anim, child: child),
+            ),
+          );
+        }
+      } else {
+        _showError('User profile not found in database');
       }
-
-      Employee employee = Employee(
-        id: uid,
-        name: employeeDoc['name'] ?? 'Employee',
-      );
-
-      if (!mounted) return;
-
-      Navigator.pushReplacement(
-        context,
-        PageRouteBuilder(
-          pageBuilder: (_, _, _) =>
-              VerificationPage(employee: employee),
-          transitionsBuilder: (context, anim, secAnim, child) =>
-              FadeTransition(opacity: anim, child: child),
-        ),
-      );
     } on FirebaseAuthException catch (e) {
       _handleAuthError(e.code);
     } catch (e) {
@@ -118,7 +148,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   // =====================================================
-  // UI
+  // UI 
   // =====================================================
   @override
   Widget build(BuildContext context) {
@@ -129,15 +159,12 @@ class _LoginPageState extends State<LoginPage> {
           padding: const EdgeInsets.symmetric(horizontal: 30),
           child: Column(
             children: [
-              // ⭐ ANIMATED ICON (MATCHING SPLASH SCREEN)
               _buildAnimatedHeaderIcon(),
-
               const SizedBox(height: 15),
-
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
+                  const Text(
                     'Welcome Back',
                     style: TextStyle(
                       fontSize: 28,
@@ -145,11 +172,10 @@ class _LoginPageState extends State<LoginPage> {
                       color: Color(0xFF1E293B),
                     ),
                   ),
-                  SizedBox(width: 12),
-                  ConnectionStatusIndicator(),
+                  const SizedBox(width: 12),
+                  const ConnectionStatusIndicator(),
                 ],
               ),
-
               const Text(
                 'Sign in to continue',
                 style: TextStyle(
@@ -157,9 +183,7 @@ class _LoginPageState extends State<LoginPage> {
                   fontSize: 14,
                 ),
               ),
-
               const SizedBox(height: 40),
-
               Container(
                 padding: const EdgeInsets.all(30),
                 decoration: BoxDecoration(
@@ -178,27 +202,21 @@ class _LoginPageState extends State<LoginPage> {
                   children: [
                     _buildLabel('Email'),
                     const SizedBox(height: 8),
-
                     _buildTextField(
                       controller: userController,
                       hint: 'Enter email',
                       icon: Icons.person_outline_rounded,
                     ),
-
                     const SizedBox(height: 20),
-
                     _buildLabel('Password'),
                     const SizedBox(height: 8),
-
                     _buildTextField(
                       controller: passController,
                       hint: '••••••••',
                       icon: Icons.lock_outline_rounded,
                       isPassword: true,
                     ),
-
                     const SizedBox(height: 25),
-
                     SizedBox(
                       width: double.infinity,
                       height: 55,
@@ -239,9 +257,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // =====================================================
-  // NEW ANIMATED ICON BUILDER
-  // =====================================================
   Widget _buildAnimatedHeaderIcon() {
     return TweenAnimationBuilder<double>(
       duration: const Duration(milliseconds: 1200),
@@ -271,9 +286,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // =====================================================
-  // INPUT WIDGETS (UNCHANGED)
-  // =====================================================
   Widget _buildLabel(String label) => Text(
         label,
         style: const TextStyle(
@@ -299,7 +311,7 @@ class _LoginPageState extends State<LoginPage> {
           fillColor: const Color(0xFFF8FAFC),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide.none, // Kept UI clean
+            borderSide: BorderSide.none,
           ),
         ),
       );

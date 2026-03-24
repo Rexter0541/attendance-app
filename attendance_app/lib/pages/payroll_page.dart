@@ -31,7 +31,6 @@ class _PayrollPageState extends State<PayrollPage> {
   static const double _dailyWage = 650.0;
   static const double _lateDeductionPerMinute = 0.01;
   static const int _requiredWorkHours = 8;
-  static const int _defaultTimeOutHour = 17; // 5 PM default
 
   @override
   void initState() {
@@ -91,14 +90,13 @@ class _PayrollPageState extends State<PayrollPage> {
     }
   }
 
-  /// CALCULATE PAY: Points to the root 'attendance' collection
+  /// CALCULATE PAY: Now with the 9 hour 30 min (570 min) GHOST TIMEOUT update
   Future<Map<String, dynamic>> _calculatePayForPeriod(DateTime start, DateTime end) async {
     double totalPay = 0;
     List<Map<String, dynamic>> dailyBreakdown = [];
 
     final adjustedEnd = DateTime(end.year, end.month, end.day, 23, 59, 59);
 
-    // FIX: Look in root 'attendance' where employeeId matches
     final attendanceSnapshot = await FirebaseFirestore.instance
         .collection('attendance') 
         .where('employeeId', isEqualTo: widget.employee.id) 
@@ -113,9 +111,24 @@ class _PayrollPageState extends State<PayrollPage> {
 
       if (timeIn == null) continue;
 
-      timeOut ??= DateTime(timeIn.year, timeIn.month, timeIn.day, _defaultTimeOutHour);
+      // --- GHOST TIMEOUT UPDATE ---
+      // 1. Determine effective end (real timeout or 'now' if they are still clocked in)
+      final DateTime effectiveEnd = timeOut ?? DateTime.now();
+      final int totalMinutesWorked = effectiveEnd.difference(timeIn).inMinutes;
 
-      final durationSeconds = timeOut.difference(timeIn).inSeconds;
+      // 2. Apply the 9h 30m (570 min) cap logic
+      bool isCapped = false;
+      DateTime calculationTimeOut;
+      
+      if (totalMinutesWorked >= 570) {
+        calculationTimeOut = timeIn.add(const Duration(hours: 9, minutes: 30));
+        isCapped = true;
+      } else {
+        calculationTimeOut = effectiveEnd;
+      }
+      // ----------------------------
+
+      final durationSeconds = calculationTimeOut.difference(timeIn).inSeconds;
       final hoursWorked = durationSeconds / 3600.0;
 
       final officialStart = DateTime(timeIn.year, timeIn.month, timeIn.day, 8, 0);
@@ -143,6 +156,7 @@ class _PayrollPageState extends State<PayrollPage> {
         'lateDeduction': lateDeduction.toStringAsFixed(2),
         'dailyEarning': dailyEarning.toStringAsFixed(2),
         'finalPay': finalDailyPay > 0 ? finalDailyPay.toStringAsFixed(2) : '0.00',
+        'isCapped': isCapped, // Tagging for UI
       });
     }
 
@@ -172,8 +186,6 @@ class _PayrollPageState extends State<PayrollPage> {
       debugPrint('Error saving payroll: $e');
     }
   }
-
-  // --- UI Logic (Headers, Rows, Filters - No logic changes below) ---
 
   static const Color bgColor = Color(0xFFF2F3F7);
 
@@ -246,7 +258,7 @@ class _PayrollPageState extends State<PayrollPage> {
     final date = data['date'] ?? '--';
     final status = data['status'] ?? 'Pending';
     final daily = data['daily'] ?? [];
-    final statusColor = status == 'Paid' ? Colors.green : Colors.orange;
+    final statusColor = status == 'Calculated' ? Colors.green : Colors.orange;
     final isExpanded = expandedRows[index] ?? false;
 
     return Column(
@@ -280,14 +292,28 @@ class _PayrollPageState extends State<PayrollPage> {
     );
   }
 
+  /// UPDATED: Added Visual 'Capped' notification to daily details
   Widget _buildDailyDetail(Map<String, dynamic> day) {
+    final bool isCapped = day['isCapped'] ?? false;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: Colors.grey.shade50, border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(day['date'], style: const TextStyle(fontWeight: FontWeight.bold)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(day['date'], style: const TextStyle(fontWeight: FontWeight.bold)),
+              if (isCapped)
+                Container(
+                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                   decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(4)),
+                   child: const Text('AUTO-TIMEOUT (9.5h)', style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
+                ),
+            ],
+          ),
           const SizedBox(height: 8),
           _detailRow('Hours Worked:', '${day['hoursWorked']} hrs'),
           _detailRow('Late Deduction:', '₱${day['lateDeduction']}', color: Colors.red),
@@ -381,43 +407,8 @@ class _PayrollPageState extends State<PayrollPage> {
   }
 }
 
-class _HeaderText extends StatelessWidget {
-  final String text;
-  const _HeaderText(this.text);
-  @override Widget build(BuildContext context) => Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12));
-}
-
-class _DataText extends StatelessWidget {
-  final String text;
-  final Color? color;
-  final FontWeight? fontWeight;
-  const _DataText(this.text, {this.color, this.fontWeight});
-  @override Widget build(BuildContext context) => Text(text, style: TextStyle(fontSize: 12, color: color ?? Colors.black87, fontWeight: fontWeight ?? FontWeight.normal));
-}
-
-class _YearPickerDialog extends StatelessWidget {
-  final int initialYear;
-  const _YearPickerDialog({required this.initialYear});
-  @override Widget build(BuildContext context) {
-    final List<int> years = List.generate(5, (index) => DateTime.now().year - index);
-    return AlertDialog(
-      title: const Text('Select Year'),
-      content: SizedBox(width: double.maxFinite, child: ListView.builder(shrinkWrap: true, itemCount: years.length, itemBuilder: (context, index) {
-        return ListTile(title: Text(years[index].toString()), onTap: () => Navigator.pop(context, years[index]));
-      })),
-    );
-  }
-}
-
-class _MonthPickerDialog extends StatelessWidget {
-  final int initialMonth;
-  const _MonthPickerDialog({required this.initialMonth});
-  @override Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Select Month'),
-      content: SizedBox(width: double.maxFinite, child: ListView.builder(shrinkWrap: true, itemCount: 12, itemBuilder: (context, index) {
-        return ListTile(title: Text(DateFormat('MMMM').format(DateTime(0, index + 1))), onTap: () => Navigator.pop(context, index + 1));
-      })),
-    );
-  }
-}
+// UI HELPER CLASSES
+class _HeaderText extends StatelessWidget { final String text; const _HeaderText(this.text); @override Widget build(BuildContext context) => Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)); }
+class _DataText extends StatelessWidget { final String text; final Color? color; final FontWeight? fontWeight; const _DataText(this.text, {this.color, this.fontWeight}); @override Widget build(BuildContext context) => Text(text, style: TextStyle(fontSize: 12, color: color ?? Colors.black87, fontWeight: fontWeight ?? FontWeight.normal)); }
+class _YearPickerDialog extends StatelessWidget { final int initialYear; const _YearPickerDialog({required this.initialYear}); @override Widget build(BuildContext context) { final List<int> years = List.generate(5, (index) => DateTime.now().year - index); return AlertDialog(title: const Text('Select Year'), content: SizedBox(width: double.maxFinite, child: ListView.builder(shrinkWrap: true, itemCount: years.length, itemBuilder: (context, index) { return ListTile(title: Text(years[index].toString()), onTap: () => Navigator.pop(context, years[index])); }))); } }
+class _MonthPickerDialog extends StatelessWidget { final int initialMonth; const _MonthPickerDialog({required this.initialMonth}); @override Widget build(BuildContext context) { return AlertDialog(title: const Text('Select Month'), content: SizedBox(width: double.maxFinite, child: ListView.builder(shrinkWrap: true, itemCount: 12, itemBuilder: (context, index) { return ListTile(title: Text(DateFormat('MMMM').format(DateTime(0, index + 1))), onTap: () => Navigator.pop(context, index + 1)); }))); } }

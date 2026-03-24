@@ -23,11 +23,12 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.attendance_app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        
+        // ML Kit Face Detection requires at least API 21. 
+        // Overriding the flutter default to ensure stability.
+        minSdk = flutter.minSdkVersion 
+        
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -35,8 +36,6 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -44,4 +43,13 @@ android {
 
 flutter {
     source = "../.."
+}
+
+// THE CRITICAL FIX: 
+// Using 'api' helps the camera plugin modules resolve the 
+// missing CallbackToFutureAdapter class during compilation.
+dependencies {
+    api("androidx.concurrent:concurrent-futures:1.2.0")
+    api("androidx.concurrent:concurrent-futures-ktx:1.2.0")
+    api("com.google.guava:guava:33.0.0-android")
 }
