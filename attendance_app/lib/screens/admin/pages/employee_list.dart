@@ -27,11 +27,12 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
-          // Add your Navigation to Add Staff page here
-        }, 
+          // Add navigation to Add Staff page
+        },
         backgroundColor: accentBlue,
         icon: const Icon(Icons.add_rounded, color: Colors.white),
-        label: const Text('Add Staff', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: const Text('Add Staff',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -48,7 +49,8 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
         titlePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         title: const Text(
           'Staff Directory',
-          style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white, fontSize: 20),
+          style: TextStyle(
+              fontWeight: FontWeight.w900, color: Colors.white, fontSize: 20),
         ),
         background: Container(
           decoration: BoxDecoration(
@@ -67,7 +69,8 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
       child: Container(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
         child: TextField(
-          onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
+          onChanged: (value) =>
+              setState(() => _searchQuery = value.toLowerCase()),
           decoration: InputDecoration(
             hintText: 'Search by name, role, or office...',
             prefixIcon: Icon(Icons.search_rounded, color: accentBlue),
@@ -91,9 +94,13 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('employees').snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.hasError) return const SliverFillRemaining(child: Center(child: Text('Error loading data')));
+        if (snapshot.hasError) {
+          return const SliverFillRemaining(
+              child: Center(child: Text('Error loading data')));
+        }
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const SliverFillRemaining(child: Center(child: CircularProgressIndicator()));
+          return const SliverFillRemaining(
+              child: Center(child: CircularProgressIndicator()));
         }
 
         final docs = snapshot.data!.docs.where((doc) {
@@ -101,13 +108,14 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
           final name = (data['name'] as String? ?? '').toLowerCase();
           final role = (data['role'] as String? ?? '').toLowerCase();
           final office = (data['office'] as String? ?? '').toLowerCase();
-          return name.contains(_searchQuery) || 
-                 role.contains(_searchQuery) || 
-                 office.contains(_searchQuery);
+          return name.contains(_searchQuery) ||
+              role.contains(_searchQuery) ||
+              office.contains(_searchQuery);
         }).toList();
 
         if (docs.isEmpty) {
-          return const SliverFillRemaining(child: Center(child: Text('No staff found.')));
+          return const SliverFillRemaining(
+              child: Center(child: Text('No staff found.')));
         }
 
         return SliverPadding(
@@ -116,7 +124,7 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
             delegate: SliverChildBuilderDelegate(
               (context, index) {
                 final data = docs[index].data() as Map<String, dynamic>;
-                return _buildEmployeeCard(data, index);
+                return _buildEmployeeCard(data);
               },
               childCount: docs.length,
             ),
@@ -126,13 +134,14 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
     );
   }
 
-  Widget _buildEmployeeCard(Map<String, dynamic> data, int index) {
+  Widget _buildEmployeeCard(Map<String, dynamic> data) {
     final String name = data['name'] ?? 'Unknown';
     final String email = data['email'] ?? 'No email';
-    // Trim used to avoid issues with hidden spaces in Firestore strings
-    final String? imageUrl = (data['imageUrl'] as String?)?.trim(); 
+    final String? imageUrl = data['imageUrl'];
     final String status = data['status'] ?? 'Active';
-    bool isActive = status.toLowerCase() == 'active';
+
+    bool isActive = status.toLowerCase() == 'active' || 
+                    status.toLowerCase() == 'timed in';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -141,7 +150,7 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withAlpha(28),
+            color: Colors.black.withAlpha(13),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -164,33 +173,41 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
     );
   }
 
+  // UPDATED: Profile Image with Fallback Logic
   Widget _buildProfileImage(String name, String? imageUrl) {
+    final bool hasImage = imageUrl != null && imageUrl.trim().isNotEmpty;
+
     return Container(
       height: 52,
       width: 52,
       decoration: const BoxDecoration(
-        color: Color(0xFFF1F5F9), // Subtle grey background
+        color: Color(0xFFF1F5F9),
         shape: BoxShape.circle,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(26),
-        child: (imageUrl != null && imageUrl.isNotEmpty)
+        child: hasImage
             ? Image.network(
-                imageUrl,
-                key: ValueKey(imageUrl),
+                imageUrl.trim(),
                 fit: BoxFit.cover,
-                // Handles CORS issues or broken links
+                // Using a key helps Flutter track image changes correctly
+                key: ValueKey(imageUrl), 
                 errorBuilder: (context, error, stackTrace) {
-                  debugPrint('Image fail for $name: $error');
                   return _buildLetterAvatar(name);
                 },
                 loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) return child;
-                  return const Center(
+                  return Center(
                     child: SizedBox(
-                      width: 15,
-                      height: 15,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        value: loadingProgress.expectedTotalBytes != null
+                            ? loadingProgress.cumulativeBytesLoaded /
+                                loadingProgress.expectedTotalBytes!
+                            : null,
+                      ),
                     ),
                   );
                 },
@@ -214,18 +231,21 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
   }
 
   Widget _buildStatusIndicator(String status, bool isActive) {
+    final Color baseColor = isActive ? const Color(0xFF16A34A) : const Color(0xFFDC2626);
+    
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: isActive ? const Color(0xFF22C55E).withAlpha(26) : const Color(0xFFEF4444).withAlpha(26),
+        color: baseColor.withAlpha(26),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        status.toLowerCase(),
+        status.toUpperCase(),
         style: TextStyle(
-          color: isActive ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
-          fontSize: 11,
+          color: baseColor,
+          fontSize: 10,
           fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
         ),
       ),
     );
@@ -233,7 +253,7 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
 
   void _showEmployeeDetails(Map<String, dynamic> data) {
     final String name = data['name'] ?? 'Unknown';
-    final String? imageUrl = (data['imageUrl'] as String?)?.trim();
+    final String? imageUrl = data['imageUrl'];
 
     showModalBottomSheet(
       context: context,
@@ -248,19 +268,36 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+            Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 24),
             _buildLargeProfileImage(name, imageUrl),
             const SizedBox(height: 16),
-            Text(name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
-            Text(data['email'] ?? 'No email provided', style: const TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w500)),
+            Text(name,
+                style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A))),
+            Text(data['email'] ?? 'No email provided',
+                style: const TextStyle(
+                    color: Color(0xFF64748B), fontWeight: FontWeight.w500)),
+            if (data['office'] != null) ...[
+              const SizedBox(height: 4),
+              Text("Office: ${data['office']}", 
+                style: const TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+            ],
             const SizedBox(height: 24),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _actionButton(Icons.edit_note_rounded, 'Edit'),
                 _actionButton(Icons.call_rounded, 'Call'),
-                _actionButton(Icons.delete_outline_rounded, 'Remove', isDelete: true),
+                _actionButton(Icons.delete_outline_rounded, 'Remove',
+                    isDelete: true),
               ],
             ),
           ],
@@ -270,6 +307,8 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
   }
 
   Widget _buildLargeProfileImage(String name, String? imageUrl) {
+    final bool hasImage = imageUrl != null && imageUrl.trim().isNotEmpty;
+
     return Container(
       height: 96,
       width: 96,
@@ -279,19 +318,26 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(48),
-        child: (imageUrl != null && imageUrl.isNotEmpty)
+        child: hasImage
             ? Image.network(
-                imageUrl,
+                imageUrl.trim(),
                 fit: BoxFit.cover,
-                errorBuilder: (c, e, s) => Container(
-                  color: const Color(0xFFEEF2FF),
-                  child: Center(child: Text(name[0], style: TextStyle(fontSize: 32, color: accentBlue, fontWeight: FontWeight.bold))),
-                ),
+                errorBuilder: (c, e, s) => _buildLargeLetterAvatar(name),
               )
-            : Container(
-                color: const Color(0xFFEEF2FF),
-                child: Center(child: Text(name.isNotEmpty ? name[0] : '?', style: TextStyle(fontSize: 32, color: accentBlue, fontWeight: FontWeight.bold))),
-              ),
+            : _buildLargeLetterAvatar(name),
+      ),
+    );
+  }
+
+  Widget _buildLargeLetterAvatar(String name) {
+    return Container(
+      color: const Color(0xFFEEF2FF),
+      child: Center(
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : '?',
+          style: TextStyle(
+              fontSize: 32, color: accentBlue, fontWeight: FontWeight.bold),
+        ),
       ),
     );
   }
@@ -308,7 +354,11 @@ class _EmployeeListPageState extends State<EmployeeListPage> {
           child: Icon(icon, color: isDelete ? Colors.red : primaryDark, size: 24),
         ),
         const SizedBox(height: 8),
-        Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: isDelete ? Colors.red : primaryDark)),
+        Text(label,
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: isDelete ? Colors.red : primaryDark)),
       ],
     );
   }
