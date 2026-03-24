@@ -21,8 +21,19 @@ class LeavePage extends StatefulWidget {
 class _LeavePageState extends State<LeavePage> {
   final User? user = FirebaseAuth.instance.currentUser;
   Map<int, bool> expandedRows = {};
+  late int _selectedYear;
+  late int _selectedMonth;
 
   static const Color bgColor = Color(0xFFF2F3F7);
+  static const Color primaryColor = Color(0xFF6C63FF);
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _selectedYear = now.year;
+    _selectedMonth = now.month;
+  }
 
   void _showApplyLeaveForm() {
     showModalBottomSheet(
@@ -31,6 +42,28 @@ class _LeavePageState extends State<LeavePage> {
       backgroundColor: Colors.transparent,
       builder: (_) => const _ApplyLeaveForm(),
     );
+  }
+
+  /// Shows a dialog to select the year.
+  Future<void> _selectYear() async {
+    final int? picked = await showDialog(
+      context: context,
+      builder: (context) => _YearPickerDialog(initialYear: _selectedYear),
+    );
+    if (picked != null && picked != _selectedYear) {
+      setState(() => _selectedYear = picked);
+    }
+  }
+
+  /// Shows a dialog to select the month.
+  Future<void> _selectMonth() async {
+    final int? picked = await showDialog(
+      context: context,
+      builder: (context) => _MonthPickerDialog(initialMonth: _selectedMonth),
+    );
+    if (picked != null && picked != _selectedMonth) {
+      setState(() => _selectedMonth = picked);
+    }
   }
 
   @override
@@ -44,6 +77,19 @@ class _LeavePageState extends State<LeavePage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 20),
+              if (Navigator.canPop(context))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.arrow_back_ios, size: 18),
+                        Text('Back', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ),
               _buildHeader(),
               const SizedBox(height: 25),
               _buildFilters(),
@@ -99,10 +145,24 @@ class _LeavePageState extends State<LeavePage> {
                             if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                               return _buildEmptyState();
                             }
+
+                            // Filter leaves by selected year & month based on startDate
+                            final filteredDocs = snapshot.data!.docs.where((doc) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              final startTimestamp = data['startDate'] as Timestamp?;
+                              if (startTimestamp == null) return false;
+                              final startDate = startTimestamp.toDate();
+                              return startDate.year == _selectedYear && startDate.month == _selectedMonth;
+                            }).toList();
+
+                            if (filteredDocs.isEmpty) {
+                              return _buildEmptyState();
+                            }
+
                             return ListView.builder(
-                              itemCount: snapshot.data!.docs.length,
+                              itemCount: filteredDocs.length,
                               itemBuilder: (context, index) {
-                                return _buildLeaveRow(snapshot.data!.docs[index].data() as Map<String, dynamic>, index);
+                                return _buildLeaveRow(filteredDocs[index].data() as Map<String, dynamic>, index);
                               },
                             );
                           },
@@ -117,12 +177,16 @@ class _LeavePageState extends State<LeavePage> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showApplyLeaveForm,
-        backgroundColor: Colors.black,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('Apply for Leave', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-      ),
+       floatingActionButton: FloatingActionButton.extended(
+    onPressed: _showApplyLeaveForm,
+    backgroundColor: Colors.black,
+    icon: const Icon(Icons.add, color: Colors.white),
+    label: const Text(
+      'Apply for Leave',
+      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+    ),
+  ),
+  floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
     );
   }
 
@@ -237,9 +301,19 @@ class _LeavePageState extends State<LeavePage> {
   Widget _buildFilters() {
     return Row(
       children: [
-        Expanded(child: _buildFilterDropdown('2026', Icons.calendar_today_outlined)),
+        Expanded(
+          child: InkWell(
+            onTap: _selectYear,
+            child: _buildFilterDropdown(_selectedYear.toString(), Icons.calendar_today_outlined),
+          ),
+        ),
         const SizedBox(width: 15),
-        Expanded(child: _buildFilterDropdown('All Types', Icons.keyboard_arrow_down)),
+        Expanded(
+          child: InkWell(
+            onTap: _selectMonth,
+            child: _buildFilterDropdown(DateFormat('MMMM').format(DateTime(0, _selectedMonth)), Icons.keyboard_arrow_down),
+          ),
+        ),
       ],
     );
   }
@@ -270,6 +344,86 @@ class _LeavePageState extends State<LeavePage> {
         const SizedBox(height: 10),
         const Text('No Leave Requests', style: TextStyle(color: Colors.grey, fontSize: 14)),
       ],
+    );
+  }
+}
+
+/// Year Picker Dialog
+class _YearPickerDialog extends StatelessWidget {
+  final int initialYear;
+  const _YearPickerDialog({required this.initialYear});
+
+  @override
+  Widget build(BuildContext context) {
+    final int currentYear = DateTime.now().year;
+    final List<int> years =
+        List.generate(6, (index) => currentYear - 5 + index).reversed.toList();
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      title: const Text('Select Year',
+          style: TextStyle(fontWeight: FontWeight.bold)),
+      content: SizedBox(
+        width: 100,
+        height: 250,
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: years.length,
+          itemBuilder: (context, index) {
+            final year = years[index];
+            return ListTile(
+              title: Text(
+                year.toString(),
+                style: TextStyle(
+                  fontWeight:
+                      year == initialYear ? FontWeight.bold : FontWeight.normal,
+                  color: year == initialYear
+                      ? _LeavePageState.primaryColor
+                      : null,
+                ),
+              ),
+              onTap: () => Navigator.of(context).pop(year),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// Month Picker Dialog
+class _MonthPickerDialog extends StatelessWidget {
+  final int initialMonth;
+  const _MonthPickerDialog({required this.initialMonth});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      title: const Text('Select Month',
+          style: TextStyle(fontWeight: FontWeight.bold)),
+      content: SizedBox(
+        width: 100,
+        height: 350,
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: 12,
+          itemBuilder: (context, index) {
+            final month = index + 1;
+            final monthName = DateFormat('MMMM').format(DateTime(0, month));
+            return ListTile(
+              title: Text(monthName,
+                  style: TextStyle(
+                      fontWeight:
+                          month == initialMonth ? FontWeight.bold : FontWeight.normal,
+                      color: month == initialMonth
+                          ? _LeavePageState.primaryColor
+                          : null)),
+              onTap: () => Navigator.of(context).pop(month),
+            );
+          },
+        ),
+      ),
     );
   }
 }

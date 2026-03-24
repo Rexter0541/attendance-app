@@ -13,6 +13,7 @@ import '../pages/leave_page.dart';
 import '../pages/profile_page.dart';
 import '../pages/announcements_page.dart';
 import '../pages/events_page.dart';
+import '../pages/notifications_page.dart';
 import '../pages/timein_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -345,7 +346,7 @@ class _HomePageState extends State<HomePage> {
             mainAxisSpacing: 15,
             childAspectRatio: 1.6,
             children: [
-              _buildStatCard('Present', presentCount.toString(), Icons.check_circle_outline, presentColor),
+              _buildStatCard('On Time/Present', presentCount.toString(), Icons.check_circle_outline, presentColor),
               _buildStatCard('Absent', absentCount.toString(), Icons.error_outline, absentColor),
               _buildStatCard('Late', lateCount.toString(), Icons.access_time, lateColor),
               _buildStatCard('Leave', leaveCount.toString(), Icons.edit_calendar_outlined, leaveColor),
@@ -372,14 +373,19 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 25),
           const Text('Company Recent Activity', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          isLoadingActivities
-              ? const Center(child: CircularProgressIndicator())
-              : Column(
-                  children: recentActivities
-                      .map((activity) => _buildActivityItem(activity['name'], activity['time'], activity['date'],
-                          activity['statusText'], activity['statusColor']))
-                      .toList(),
+          isLoadingActivities 
+            ? const Center(child: CircularProgressIndicator())
+            : SizedBox(
+                height: 300, // Ito yung "box limiter" para hindi humaba ang buong page
+                child: ListView.builder(
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: recentActivities.length,
+                  itemBuilder: (context, index) {
+                    final activity = recentActivities[index];
+                    return _buildActivityItem(activity['name'], activity['time'], activity['date'], activity['statusText'], activity['statusColor']);
+                  },
                 ),
+              ),
         ],
       ),
     );
@@ -612,18 +618,12 @@ class _HomePageState extends State<HomePage> {
 
   Widget getSelectedPage() {
     switch (currentIndex) {
-      case 0:
-        return dashboardBody();
-      case 1:
-        return PayrollPage(employee: widget.employee, currentStatus: currentStatus, statusColor: statusColor);
-      case 2:
-        return LeavePage(employee: widget.employee, currentStatus: currentStatus, statusColor: statusColor);
-      case 3:
-        return AttendanceLogPage(employee: widget.employee, currentStatus: currentStatus, statusColor: statusColor);
-      case 4:
-        return const ProfilePage();
-      default:
-        return dashboardBody();
+      case 0: return dashboardBody();
+      case 1: return PayrollPage(employee: widget.employee, currentStatus: currentStatus, statusColor: statusColor);
+      case 2: return LeavePage(employee: widget.employee, currentStatus: currentStatus, statusColor: statusColor);
+      case 3: return AttendanceLogPage(employee: widget.employee, currentStatus: currentStatus, statusColor: statusColor);
+      case 4: return ProfilePage(employee: widget.employee);
+      default: return dashboardBody();
     }
   }
 
@@ -638,7 +638,7 @@ class _HomePageState extends State<HomePage> {
         foregroundColor: Colors.black,
         elevation: 0,
         actions: [
-          IconButton(icon: const Icon(Icons.notifications_none_rounded), onPressed: () {}),
+          _buildNotificationBell(),
           IconButton(icon: const Icon(Icons.logout), onPressed: _showLogoutDialog),
           const SizedBox(width: 10),
         ],
@@ -673,6 +673,47 @@ class _HomePageState extends State<HomePage> {
           BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: 'Profile'),
         ],
       ),
+    );
+  }
+
+  Widget _buildNotificationBell() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return IconButton(
+        icon: const Icon(Icons.notifications_none_rounded),
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPage(employee: widget.employee, currentStatus: currentStatus, statusColor: statusColor))),
+      );
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('notifications')
+          .where('recipientId', isEqualTo: user.uid)
+          .where('isRead', isEqualTo: false)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final unreadCount = snapshot.data?.docs.length ?? 0;
+
+        return IconButton(
+          icon: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              const Icon(Icons.notifications_none_rounded),
+              if (unreadCount > 0)
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                    child: Text(unreadCount.toString(), style: const TextStyle(color: Colors.white, fontSize: 8)),
+                  ),
+                ),
+            ],
+          ),
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPage(employee: widget.employee, currentStatus: currentStatus, statusColor: statusColor))),
+        );
+      },
     );
   }
 }
