@@ -1,11 +1,11 @@
 name: attendance_app
-description: "A new Flutter project."
+description: "A new Flutter project with Liveness Detection."
 publish_to: 'none'
 
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.11.0
+  sdk: ^3.11.0 # Ensure your Flutter version supports this SDK
 
 dependencies:
   flutter:
@@ -13,24 +13,31 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
-  # ✅ GPS
+  # ✅ GPS & Location
   geolocator: ^11.0.0
 
-  # ✅ Firebase packages
+  # ✅ Firebase Core & Auth
   firebase_core: ^4.5.0
   firebase_auth: ^6.2.0
   cloud_firestore: ^6.1.3
+  firebase_storage: ^13.1.0
 
+  # ✅ QR Scanner
+  mobile_scanner: ^5.1.0
+
+  # ✅ Biometrics & Liveness (New Additions)
+  camera: 0.10.6            # Required for real-time frame streaming
+  google_mlkit_face_detection: ^0.11.0 # The AI engine for blink detection
+  image_picker: ^1.1.2        # Kept as a fallback for standard uploads
+
+  # ✅ Backend & Storage
+  supabase_flutter: ^2.8.0
+
+  # ✅ Utilities
   intl: ^0.19.0
 
-  # ✅ Image handling
-  image_picker: ^0.8.7+4
-
-  #Supabase
-  supabase_flutter: ^1.0.0
-
-  #shared preferences
-  shared_preferences: ^2.0.15
+  # Shared preference
+  shared_preferences: ^2.2.2
 
 dev_dependencies:
   flutter_test:
@@ -39,6 +46,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.13.1
 
+# ✅ App Icon Configuration
 flutter_launcher_icons:
   android: true
   ios: true

@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 class EventsPage extends StatelessWidget {
   const EventsPage({super.key});
 
+  // UI Constants (Modern Design System)
+  static const Color bgColor = Color(0xFFF8F9FC);
+  static const Color cardColor = Colors.white;
+  static const Color textColor = Color(0xFF1E293B);
+
   // ✅ Sample Event Data
   final List<Map<String, dynamic>> sampleEvents = const [
     {
@@ -26,19 +31,26 @@ class EventsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F3F7),
+      backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('Company Events',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-        backgroundColor: const Color(0xFFF2F3F7),
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: Colors.black,
+        centerTitle: true,
+        leading: Navigator.canPop(context)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new, color: textColor, size: 20),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
+        title: const Text('Company Events',
+            style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18)),
       ),
       body: sampleEvents.isEmpty
           ? _buildEmptyState()
-          : ListView.builder(
-              padding: const EdgeInsets.all(20),
+          : ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               itemCount: sampleEvents.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
                 return _buildEventCard(sampleEvents[index]);
               },
@@ -47,18 +59,18 @@ class EventsPage extends StatelessWidget {
   }
 
   Widget _buildEventCard(Map<String, dynamic> event) {
+    final Color eventColor = event['color'];
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 15),
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.black, width: 1.5),
-        boxShadow: const [
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
           BoxShadow(
-            color: Colors.black12,
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
-            offset: Offset(4, 4),
+            offset: const Offset(0, 4),
           )
         ],
       ),
@@ -66,32 +78,33 @@ class EventsPage extends StatelessWidget {
         children: [
           // --- Date Badge ---
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            width: 60,
+            height: 70,
             decoration: BoxDecoration(
-              color: event['color'].withOpacity(0.1),
+              color: eventColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: event['color'], width: 1),
             ),
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   event['month'],
                   style: TextStyle(
-                      color: event['color'],
+                      color: eventColor,
                       fontWeight: FontWeight.bold,
                       fontSize: 12),
                 ),
                 Text(
                   event['day'],
                   style: TextStyle(
-                      color: event['color'],
+                      color: eventColor,
                       fontWeight: FontWeight.bold,
                       fontSize: 20),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 15),
+          const SizedBox(width: 16),
           // --- Event Details ---
           Expanded(
             child: Column(
@@ -99,33 +112,29 @@ class EventsPage extends StatelessWidget {
               children: [
                 Text(
                   event['title'],
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 16),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: textColor),
                 ),
-                const SizedBox(height: 5),
+                const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.location_on_outlined,
-                        size: 14, color: Colors.grey),
+                    const Icon(Icons.location_on_outlined, size: 14, color: Colors.grey),
                     const SizedBox(width: 4),
                     Text(event['location'],
-                        style:
-                            const TextStyle(color: Colors.grey, fontSize: 12)),
+                        style: const TextStyle(color: Colors.grey, fontSize: 12)),
                   ],
                 ),
+                const SizedBox(height: 4),
                 Row(
                   children: [
                     const Icon(Icons.access_time, size: 14, color: Colors.grey),
                     const SizedBox(width: 4),
                     Text(event['time'],
-                        style:
-                            const TextStyle(color: Colors.grey, fontSize: 12)),
+                        style: const TextStyle(color: Colors.grey, fontSize: 12)),
                   ],
                 ),
               ],
             ),
           ),
-          const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.black26),
         ],
       ),
     );
@@ -136,14 +145,9 @@ class EventsPage extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.event_note_outlined, size: 100, color: Colors.blue),
-          const SizedBox(height: 15),
-          const Text('No Upcoming Events',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Icon(Icons.event_note_outlined, size: 80, color: Colors.grey.shade300),
           const SizedBox(height: 10),
-          Text('There are no scheduled events\nat this moment.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey[600])),
+          const Text('No Upcoming Events', style: TextStyle(color: Colors.grey, fontSize: 14)),
         ],
       ),
     );

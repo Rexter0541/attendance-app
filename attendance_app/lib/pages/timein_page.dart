@@ -30,10 +30,13 @@ class _TimeInPageState extends State<TimeInPage> {
   @override
   void initState() {
     super.initState();
+    // 1. Start the digital clock
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => now = DateTime.now());
     });
-    _listenAttendance();
+
+    // 2. Resolve the Attendance ID and start listening
+    _initAttendanceSession();
   }
 
   @override
@@ -44,20 +47,53 @@ class _TimeInPageState extends State<TimeInPage> {
   }
 
   // =====================================================
-  // LISTEN TO ATTENDANCE DOCUMENT
+  // INITIALIZE SESSION (FIX FOR BLANK TIMES ON RESTART)
   // =====================================================
-  Future<void> _listenAttendance() async {
-    if (widget.employee.attendanceId == null) {
-      loadingAttendance = false;
+  Future<void> _initAttendanceSession() async {
+    // If we already have the ID from the previous screen, use it immediately
+    if (widget.employee.attendanceId != null) {
+      _listenAttendance(widget.employee.attendanceId!);
       return;
     }
 
+    // Otherwise, search Firestore for today's active record
+    try {
+      final today = DateTime.now();
+      final startOfDay = DateTime(today.year, today.month, today.day);
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection('attendance')
+          .where('employeeId', isEqualTo: widget.employee.id)
+          .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        _listenAttendance(snapshot.docs.first.id);
+      } else {
+        if (mounted) setState(() => loadingAttendance = false);
+      }
+    } catch (e) {
+      debugPrint('Error finding session: $e');
+      if (mounted) setState(() => loadingAttendance = false);
+    }
+  }
+
+  // =====================================================
+  // LISTEN TO ATTENDANCE DOCUMENT
+  // =====================================================
+  void _listenAttendance(String attendanceId) {
+    attendanceListener?.cancel();
     attendanceListener = FirebaseFirestore.instance
         .collection('attendance')
-        .doc(widget.employee.attendanceId)
+        .doc(attendanceId)
         .snapshots()
         .listen((doc) {
-      if (!doc.exists) return;
+      if (!doc.exists) {
+        if (mounted) setState(() => loadingAttendance = false);
+        return;
+      }
+      
       final data = doc.data();
       if (!mounted) return;
 
@@ -73,9 +109,6 @@ class _TimeInPageState extends State<TimeInPage> {
     });
   }
 
-  // =====================================================
-  // FORMAT TIME
-  // =====================================================
   String formatTime(DateTime time) {
     final hour = time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
     final minute = time.minute.toString().padLeft(2, '0');
@@ -93,14 +126,46 @@ class _TimeInPageState extends State<TimeInPage> {
 
     _addLog('Recording Time In...');
     await _animateFixedDuration(const Duration(seconds: 1));
-    await _recordTimeIn();
-    _addLog('Clock in recorded successfully ✅');
+    
+    // Create reference and get ID
+    final docRef = FirebaseFirestore.instance.collection('attendance').doc(widget.employee.attendanceId);
+    
+    await docRef.set({
+      'employeeId': widget.employee.id, // Ensure this is saved for queries
+      'employeeName': widget.employee.name,
+      'timeIn': FieldValue.serverTimestamp(), 
+      'status': 'Timed In',
+      'timestamp': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
 
+    // --- NOTIFICATION LOGIC ---
+    final now = DateTime.now();
+    final officialStart = DateTime(now.year, now.month, now.day, 8, 15); // 8:15 AM threshold
+    final isLate = now.isAfter(officialStart);
+
+    final title = isLate ? 'You are Late' : 'Time-In Successful';
+    final body = isLate
+        ? 'You clocked in at ${DateFormat('h:mm a').format(now)}. Please be mindful of your schedule.'
+        : 'You clocked in at ${DateFormat('h:mm a').format(now)}. Have a productive day!';
+    final type = isLate ? 'attendance_late' : 'attendance_present';
+
+    await FirebaseFirestore.instance.collection('notifications').add({
+      'recipientId': widget.employee.id,
+      'title': title,
+      'body': body,
+      'type': type,
+      'isRead': false,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    // --------------------------
+
+    _addLog('Clock in recorded successfully ✅');
+    _listenAttendance(docRef.id); // Ensure we are listening to this specific doc
     setState(() => isProcessing = false);
   }
 
   // =====================================================
-  // HANDLE TIME OUT (USING LOCATION SERVICE)
+  // HANDLE TIME OUT
   // =====================================================
   Future<void> handleTimeOut() async {
     logs.clear();
@@ -134,16 +199,12 @@ class _TimeInPageState extends State<TimeInPage> {
       _showErrorDialog('Location Error', e.toString().replaceAll('Exception:', ''));
     }
 
-    setState(() => isProcessing = false);
+    if (mounted) setState(() => isProcessing = false);
   }
 
-  // =====================================================
-  // PROGRESS ANIMATION
-  // =====================================================
   Future<void> _animateFixedDuration(Duration duration) async {
-    final steps = 50;
+    const steps = 50;
     final interval = (duration.inMilliseconds / steps).round();
-
     for (int i = 1; i <= steps; i++) {
       if (!mounted) return;
       await Future.delayed(Duration(milliseconds: interval));
@@ -156,36 +217,6 @@ class _TimeInPageState extends State<TimeInPage> {
     setState(() => logs.insert(0, message));
   }
 
-  // =====================================================
-  // FIRESTORE FUNCTIONS
-  // =====================================================
-  Future<void> _recordTimeIn() async {
-    await FirebaseFirestore.instance
-        .collection('attendance')
-        .doc(widget.employee.attendanceId)
-        .update({'timeIn': FieldValue.serverTimestamp(), 'status': 'Timed In'});
-
-    // Create a notification for time-in
-    final now = DateTime.now();
-    final officialStart = DateTime(now.year, now.month, now.day, 8, 15); // 8:15 AM threshold
-    final isLate = now.isAfter(officialStart);
-
-    final title = isLate ? 'You are Late' : 'Time-In Successful';
-    final body = isLate
-        ? 'You clocked in at ${DateFormat('h:mm a').format(now)}. Please be mindful of your schedule.'
-        : 'You clocked in at ${DateFormat('h:mm a').format(now)}. Have a productive day!';
-    final type = isLate ? 'attendance_late' : 'attendance_present';
-
-    await FirebaseFirestore.instance.collection('notifications').add({
-      'recipientId': widget.employee.id,
-      'title': title,
-      'body': body,
-      'type': type,
-      'isRead': false,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-  }
-
   Future<void> _recordTimeOut(LocationResult result) async {
     await FirebaseFirestore.instance
         .collection('attendance')
@@ -193,6 +224,7 @@ class _TimeInPageState extends State<TimeInPage> {
         .update({
       'timeOut': FieldValue.serverTimestamp(),
       'status': 'Timed Out',
+      'timestamp': FieldValue.serverTimestamp(),
       'coords': {
         'lat': result.position.latitude,
         'lng': result.position.longitude,
@@ -201,13 +233,11 @@ class _TimeInPageState extends State<TimeInPage> {
     });
   }
 
-  // =====================================================
-  // DIALOGS
-  // =====================================================
   void _showOutOfRangeDialog(double distance) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Out of Range', style: TextStyle(color: Colors.red)),
         content: Text('You are ${distance.toStringAsFixed(2)} meters away from the office.'),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
@@ -219,6 +249,7 @@ class _TimeInPageState extends State<TimeInPage> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(title, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
         content: Text(message),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
@@ -226,19 +257,34 @@ class _TimeInPageState extends State<TimeInPage> {
     );
   }
 
-  // =====================================================
-  // UI
-  // =====================================================
   @override
   Widget build(BuildContext context) {
-    if (loadingAttendance) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (loadingAttendance) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF8F9FC),
+        body: Center(child: CircularProgressIndicator(color: Color(0xFF4F46E5))),
+      );
+    }
 
     return Scaffold(
-      backgroundColor: const Color(0xffF3F4F6),
+      backgroundColor: const Color(0xFFF8F9FC),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF1E293B)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Attendance Check-In',
+            style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold)),
+        centerTitle: true,
+      ),
       body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: _buildCard(),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: _buildCard(),
+          ),
         ),
       ),
     );
@@ -246,59 +292,140 @@ class _TimeInPageState extends State<TimeInPage> {
 
   Widget _buildCard() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(blurRadius: 15, color: Colors.black.withAlpha(20))],
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4F46E5), Color(0xFF818CF8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF4F46E5).withOpacity(0.4),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('Check-In Portal', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
-          Text(formatTime(now), style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Color(0xff6366F1))),
-          const SizedBox(height: 25),
-          Text('Welcome, ${widget.employee.name}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 25),
-          _timeDisplay('Time In', timeInRecorded),
+          const Text('Current Time',
+              style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w500, color: Colors.white70)),
+          const SizedBox(height: 5),
+          Text(formatTime(now),
+              style: const TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  letterSpacing: 2)),
           const SizedBox(height: 10),
-          _timeDisplay('Time Out', timeOutRecorded),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20)),
+            child: Text('Hello, ${widget.employee.name}',
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white)),
+          ),
           const SizedBox(height: 30),
-          LinearProgressIndicator(value: progressValue, minHeight: 8),
-          const SizedBox(height: 20),
-          Column(children: logs.map((e) => Text('> $e', style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))).toList()),
-          const SizedBox(height: 20),
+
+          // Time Logs Container
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.2)),
+            ),
+            child: Column(
+              children: [
+                _timeDisplay('Time In', timeInRecorded),
+                const Divider(color: Colors.white24, height: 20),
+                _timeDisplay('Time Out', timeOutRecorded),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 30),
+
+          if (progressValue > 0 && progressValue < 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: LinearProgressIndicator(
+                value: progressValue,
+                minHeight: 6,
+                backgroundColor: Colors.white24,
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.login),
-                  label: const Text('Time In'),
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF4F46E5),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                  ),
+                  icon: const Icon(Icons.login_rounded),
+                  label: const Text('TIME IN',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   onPressed: timeInRecorded != null || isProcessing ? null : handleTimeIn,
                 ),
               ),
               const SizedBox(width: 15),
               Expanded(
                 child: ElevatedButton.icon(
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Time Out'),
-                  onPressed: timeInRecorded == null || timeOutRecorded != null || isProcessing ? null : handleTimeOut,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFF5252),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                  ),
+                  icon: const Icon(Icons.logout_rounded),
+                  label: const Text('TIME OUT',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  onPressed: timeInRecorded == null ||
+                          timeOutRecorded != null ||
+                          isProcessing
+                      ? null
+                      : handleTimeOut,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 15),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              icon: const Icon(Icons.dashboard),
-              label: const Text('Dashboard'),
-              onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => HomePage(employee: widget.employee)));
-              },
+
+          const SizedBox(height: 20),
+
+          if (logs.isNotEmpty)
+            Container(
+              height: 80,
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12)),
+              child: ListView(
+                children: logs
+                    .map((e) => Text('> $e',
+                        style: const TextStyle(
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            color: Colors.white70)))
+                    .toList(),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -308,9 +435,12 @@ class _TimeInPageState extends State<TimeInPage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+        Text(label,
+            style: const TextStyle(
+                fontWeight: FontWeight.w500, fontSize: 14, color: Colors.white70)),
         Text(time == null ? '--:--' : formatTime(time),
-            style: TextStyle(fontSize: 16, color: time == null ? Colors.grey : Colors.green, fontWeight: FontWeight.bold)),
+            style: const TextStyle(
+                fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
       ],
     );
   }

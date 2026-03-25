@@ -11,7 +11,6 @@ class AttendanceService {
   // CHECK IF EMPLOYEE ALREADY HAS ATTENDANCE TODAY
   // ============================================
   Future<AttendanceSession?> checkTodayAttendance(Employee employee) async {
-
     final now = DateTime.now();
 
     final startOfDay = DateTime(now.year, now.month, now.day);
@@ -43,13 +42,14 @@ class AttendanceService {
   }
 
   // ============================================
-  // CREATE NEW ATTENDANCE RECORD
+  // CREATE NEW ATTENDANCE RECORD (UPDATED)
   // ============================================
   Future<String> createAttendance({
     required Employee employee,
     required double lat,
     required double lng,
     required double distance,
+    String? photoUrl, // ✅ Added to receive URL from VerificationPage
   }) async {
 
     final docRef = await _firestore.collection("attendance").add({
@@ -58,6 +58,7 @@ class AttendanceService {
       "status": "verified",
       "timeIn": null,
       "timeOut": null,
+      "verification_photo": photoUrl, // ✅ Saves the Supabase link here
 
       "coords": {
         "lat": lat,
