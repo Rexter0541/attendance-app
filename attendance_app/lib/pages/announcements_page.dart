@@ -3,6 +3,12 @@ import 'package:flutter/material.dart';
 class AnnouncementsPage extends StatelessWidget {
   const AnnouncementsPage({super.key});
 
+  // UI Constants (Matching PayrollPage)
+  static const Color bgColor = Color(0xFFF8F9FC);
+  static const Color primaryColor = Color(0xFF4F46E5);
+  static const Color cardColor = Colors.white;
+  static const Color textColor = Color(0xFF1E293B);
+
   // ✅ Sample Data
   final List<Map<String, String>> sampleAnnouncements = const [
     {
@@ -40,19 +46,26 @@ class AnnouncementsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F3F7),
+      backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('Announcements',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-        backgroundColor: const Color(0xFFF2F3F7),
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        foregroundColor: Colors.black,
+        centerTitle: true,
+        leading: Navigator.canPop(context)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new, color: textColor, size: 20),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
+        title: const Text('Announcements',
+            style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18)),
       ),
       body: sampleAnnouncements.isEmpty
           ? _buildEmptyState()
-          : ListView.builder(
-              padding: const EdgeInsets.all(20),
+          : ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               itemCount: sampleAnnouncements.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
                 final item = sampleAnnouncements[index];
                 return _buildAnnouncementCard(item);
@@ -63,46 +76,72 @@ class AnnouncementsPage extends StatelessWidget {
 
   Widget _buildAnnouncementCard(Map<String, String> data) {
     bool isUrgent = data['type'] == 'Urgent';
+    Color typeColor = isUrgent ? Colors.redAccent : primaryColor;
+    IconData typeIcon = isUrgent ? Icons.notification_important_rounded : Icons.campaign_rounded;
 
     return Container(
-      // ✅ FIXED: Changed 'EdgeInsets.bottom' to 'EdgeInsets.only(bottom: 15)'
-      margin: const EdgeInsets.only(bottom: 15), 
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.black, width: 1.5),
-        boxShadow: const [
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
           BoxShadow(
-            color: Colors.black12,
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 10,
-            offset: Offset(4, 4),
-          )
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                data['date']!,
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
-              ),
-              if (isUrgent)
-                const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
-            ],
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: typeColor.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(typeIcon, color: typeColor, size: 24),
           ),
-          const SizedBox(height: 8),
-          Text(
-            data['title']!,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            data['content']!,
-            style: TextStyle(color: Colors.grey[700], height: 1.4),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      data['type']!.toUpperCase(),
+                      style: TextStyle(
+                        color: typeColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    Text(
+                      data['date']!,
+                      style: TextStyle(color: Colors.grey[400], fontSize: 11),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  data['title']!,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: textColor,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  data['content']!,
+                  style: TextStyle(color: Colors.grey[600], height: 1.4, fontSize: 13),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -114,14 +153,9 @@ class AnnouncementsPage extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.campaign_outlined, size: 100, color: Colors.orange),
-          const SizedBox(height: 15),
-          const Text('No Announcements',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          Icon(Icons.campaign_outlined, size: 80, color: Colors.grey.shade300),
           const SizedBox(height: 10),
-          Text('Stay tuned for updates.', 
-            textAlign: TextAlign.center, 
-            style: TextStyle(color: Colors.grey[600])),
+          const Text('No Announcements', style: TextStyle(color: Colors.grey, fontSize: 14)),
         ],
       ),
     );

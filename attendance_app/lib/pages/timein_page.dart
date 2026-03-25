@@ -130,11 +130,34 @@ class _TimeInPageState extends State<TimeInPage> {
     // Create reference and get ID
     final docRef = FirebaseFirestore.instance.collection('attendance').doc(widget.employee.attendanceId);
     
-    await docRef.update({
+    await docRef.set({
+      'employeeId': widget.employee.id, // Ensure this is saved for queries
+      'employeeName': widget.employee.name,
       'timeIn': FieldValue.serverTimestamp(), 
       'status': 'Timed In',
       'timestamp': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    // --- NOTIFICATION LOGIC ---
+    final now = DateTime.now();
+    final officialStart = DateTime(now.year, now.month, now.day, 8, 15); // 8:15 AM threshold
+    final isLate = now.isAfter(officialStart);
+
+    final title = isLate ? 'You are Late' : 'Time-In Successful';
+    final body = isLate
+        ? 'You clocked in at ${DateFormat('h:mm a').format(now)}. Please be mindful of your schedule.'
+        : 'You clocked in at ${DateFormat('h:mm a').format(now)}. Have a productive day!';
+    final type = isLate ? 'attendance_late' : 'attendance_present';
+
+    await FirebaseFirestore.instance.collection('notifications').add({
+      'recipientId': widget.employee.id,
+      'title': title,
+      'body': body,
+      'type': type,
+      'isRead': false,
+      'timestamp': FieldValue.serverTimestamp(),
     });
+    // --------------------------
 
     _addLog('Clock in recorded successfully ✅');
     _listenAttendance(docRef.id); // Ensure we are listening to this specific doc
@@ -194,36 +217,6 @@ class _TimeInPageState extends State<TimeInPage> {
     setState(() => logs.insert(0, message));
   }
 
-  // =====================================================
-  // FIRESTORE FUNCTIONS
-  // =====================================================
-  Future<void> _recordTimeIn() async {
-    await FirebaseFirestore.instance
-        .collection('attendance')
-        .doc(widget.employee.attendanceId)
-        .update({'timeIn': FieldValue.serverTimestamp(), 'status': 'Timed In'});
-
-    // Create a notification for time-in
-    final now = DateTime.now();
-    final officialStart = DateTime(now.year, now.month, now.day, 8, 15); // 8:15 AM threshold
-    final isLate = now.isAfter(officialStart);
-
-    final title = isLate ? 'You are Late' : 'Time-In Successful';
-    final body = isLate
-        ? 'You clocked in at ${DateFormat('h:mm a').format(now)}. Please be mindful of your schedule.'
-        : 'You clocked in at ${DateFormat('h:mm a').format(now)}. Have a productive day!';
-    final type = isLate ? 'attendance_late' : 'attendance_present';
-
-    await FirebaseFirestore.instance.collection('notifications').add({
-      'recipientId': widget.employee.id,
-      'title': title,
-      'body': body,
-      'type': type,
-      'isRead': false,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-  }
-
   Future<void> _recordTimeOut(LocationResult result) async {
     await FirebaseFirestore.instance
         .collection('attendance')
@@ -266,14 +259,30 @@ class _TimeInPageState extends State<TimeInPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (loadingAttendance) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (loadingAttendance) {
+      return const Scaffold(
+        backgroundColor: Color(0xFFF8F9FC),
+        body: Center(child: CircularProgressIndicator(color: Color(0xFF4F46E5))),
+      );
+    }
 
     return Scaffold(
-      backgroundColor: const Color(0xffF3F4F6),
+      backgroundColor: const Color(0xFFF8F9FC),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF1E293B)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text('Attendance Check-In',
+            style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold)),
+        centerTitle: true,
+      ),
       body: Center(
         child: SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             child: _buildCard(),
           ),
         ),
@@ -283,49 +292,93 @@ class _TimeInPageState extends State<TimeInPage> {
 
   Widget _buildCard() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(blurRadius: 15, color: Colors.black.withAlpha(20))],
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4F46E5), Color(0xFF818CF8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF4F46E5).withValues(alpha: 0.4),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('Check-In Portal', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
-          Text(formatTime(now), style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Color(0xff6366F1))),
-          const SizedBox(height: 25),
-          Text('Welcome, ${widget.employee.name}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 25),
-          _timeDisplay('Time In', timeInRecorded),
+          const Text('Current Time',
+              style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w500, color: Colors.white70)),
+          const SizedBox(height: 5),
+          Text(formatTime(now),
+              style: const TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  letterSpacing: 2)),
           const SizedBox(height: 10),
-          _timeDisplay('Time Out', timeOutRecorded),
-          const SizedBox(height: 30),
-          LinearProgressIndicator(
-            value: progressValue, 
-            minHeight: 8, 
-            backgroundColor: Colors.grey.shade200,
-            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xff6366F1)),
-          ),
-          const SizedBox(height: 20),
           Container(
-            height: 60,
-            width: double.infinity,
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(8)),
-            child: ListView(
-              children: logs.map((e) => Text('> $e', style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Colors.blueGrey))).toList(),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(20)),
+            child: Text('Hello, ${widget.employee.name}',
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white)),
+          ),
+          const SizedBox(height: 30),
+
+          // Time Logs Container
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+            ),
+            child: Column(
+              children: [
+                _timeDisplay('Time In', timeInRecorded),
+                const Divider(color: Colors.white24, height: 20),
+                _timeDisplay('Time Out', timeOutRecorded),
+              ],
             ),
           ),
-          const SizedBox(height: 20),
+
+          const SizedBox(height: 30),
+
+          if (progressValue > 0 && progressValue < 1)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 20),
+              child: LinearProgressIndicator(
+                value: progressValue,
+                minHeight: 6,
+                backgroundColor: Colors.white24,
+                valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
-                  icon: const Icon(Icons.login),
-                  label: const Text('Time In'),
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF4F46E5),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                  ),
+                  icon: const Icon(Icons.login_rounded),
+                  label: const Text('TIME IN',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   onPressed: timeInRecorded != null || isProcessing ? null : handleTimeIn,
                 ),
               ),
@@ -333,28 +386,46 @@ class _TimeInPageState extends State<TimeInPage> {
               Expanded(
                 child: ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xff6366F1),
+                    backgroundColor: const Color(0xFFFF5252),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
                   ),
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Time Out'),
-                  onPressed: timeInRecorded == null || timeOutRecorded != null || isProcessing ? null : handleTimeOut,
+                  icon: const Icon(Icons.logout_rounded),
+                  label: const Text('TIME OUT',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  onPressed: timeInRecorded == null ||
+                          timeOutRecorded != null ||
+                          isProcessing
+                      ? null
+                      : handleTimeOut,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 15),
-          SizedBox(
-            width: double.infinity,
-            child: TextButton.icon(
-              icon: const Icon(Icons.dashboard_outlined),
-              label: const Text('Back to Dashboard'),
-              onPressed: () {
-                Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomePage(employee: widget.employee)));
-              },
+
+          const SizedBox(height: 20),
+
+          if (logs.isNotEmpty)
+            Container(
+              height: 80,
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12)),
+              child: ListView(
+                children: logs
+                    .map((e) => Text('> $e',
+                        style: const TextStyle(
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            color: Colors.white70)))
+                    .toList(),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -364,9 +435,12 @@ class _TimeInPageState extends State<TimeInPage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+        Text(label,
+            style: const TextStyle(
+                fontWeight: FontWeight.w500, fontSize: 14, color: Colors.white70)),
         Text(time == null ? '--:--' : formatTime(time),
-            style: TextStyle(fontSize: 16, color: time == null ? Colors.grey : Colors.green, fontWeight: FontWeight.bold)),
+            style: const TextStyle(
+                fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
       ],
     );
   }

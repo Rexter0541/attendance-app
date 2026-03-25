@@ -24,8 +24,10 @@ class _LeavePageState extends State<LeavePage> {
   late int _selectedYear;
   late int _selectedMonth;
 
-  static const Color bgColor = Color(0xFFF2F3F7);
-  static const Color primaryColor = Color(0xFF6C63FF);
+  static const Color bgColor = Color(0xFFF8F9FC);
+  static const Color primaryColor = Color(0xFF4F46E5);
+  static const Color cardColor = Colors.white;
+  static const Color textColor = Color(0xFF1E293B);
 
   @override
   void initState() {
@@ -39,7 +41,10 @@ class _LeavePageState extends State<LeavePage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (_) => const _ApplyLeaveForm(),
     );
   }
@@ -70,231 +75,324 @@ class _LeavePageState extends State<LeavePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: bgColor,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        leading: Navigator.canPop(context)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new, color: textColor, size: 20),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
+        title: const Text(
+          'Leave Requests',
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const SizedBox(height: 10),
+              _buildEmployeeCard(),
               const SizedBox(height: 20),
-              if (Navigator.canPop(context))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.arrow_back_ios, size: 18),
-                        Text('Back', style: TextStyle(fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                  ),
-                ),
-              _buildHeader(),
-              const SizedBox(height: 25),
               _buildFilters(),
               const SizedBox(height: 20),
 
-              // --- Main Data Container ---
               Expanded(
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.black, width: 1.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(26),
-                        blurRadius: 10,
-                        offset: const Offset(4, 4),
-                      )
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      // Table Header
-                      Container(
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                        decoration: const BoxDecoration(
-                          border: Border(bottom: BorderSide(color: Colors.black, width: 1.5)),
-                        ),
-                        child: const Row(
-                          children: [
-                            Expanded(child: Center(child: _HeaderText('Type'))),
-                            Expanded(child: Center(child: _HeaderText('From'))),
-                            Expanded(child: Center(child: _HeaderText('To'))),
-                            Expanded(child: Center(child: _HeaderText('Status'))),
-                          ],
-                        ),
-                      ),
-                      
-                      // ✅ Leave Requests List Body
-                      Expanded(
-                        child: StreamBuilder<QuerySnapshot>(
-                          stream: FirebaseFirestore.instance
-                              .collection('employees')
-                              .doc(user?.uid)
-                              .collection('leaves')
-                              .orderBy('filedDate', descending: true)
-                              .snapshots(),
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState == ConnectionState.waiting) {
-                              return const Center(child: CircularProgressIndicator());
-                            }
-                            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                              return _buildEmptyState();
-                            }
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('employees')
+                      .doc(user?.uid)
+                      .collection('leaves')
+                      .orderBy('filedDate', descending: true)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: primaryColor));
+                    }
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return _buildEmptyState();
+                    }
 
-                            // Filter leaves by selected year & month based on startDate
-                            final filteredDocs = snapshot.data!.docs.where((doc) {
-                              final data = doc.data() as Map<String, dynamic>;
-                              final startTimestamp = data['startDate'] as Timestamp?;
-                              if (startTimestamp == null) return false;
-                              final startDate = startTimestamp.toDate();
-                              return startDate.year == _selectedYear && startDate.month == _selectedMonth;
-                            }).toList();
+                    // Filter leaves by selected year & month based on startDate
+                    final filteredDocs = snapshot.data!.docs.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final startTimestamp = data['startDate'] as Timestamp?;
+                      if (startTimestamp == null) return false;
+                      final startDate = startTimestamp.toDate();
+                      return startDate.year == _selectedYear && startDate.month == _selectedMonth;
+                    }).toList();
 
-                            if (filteredDocs.isEmpty) {
-                              return _buildEmptyState();
-                            }
+                    if (filteredDocs.isEmpty) {
+                      return _buildEmptyState();
+                    }
 
-                            return ListView.builder(
-                              itemCount: filteredDocs.length,
-                              itemBuilder: (context, index) {
-                                return _buildLeaveRow(filteredDocs[index].data() as Map<String, dynamic>, index);
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
+                    return ListView.separated(
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: filteredDocs.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        return _buildLeaveCard(filteredDocs[index].data() as Map<String, dynamic>, index);
+                      },
+                    );
+                  },
                 ),
               ),
-              const SizedBox(height: 100), 
             ],
           ),
         ),
       ),
        floatingActionButton: FloatingActionButton.extended(
     onPressed: _showApplyLeaveForm,
-    backgroundColor: Colors.black,
+    backgroundColor: primaryColor,
+    elevation: 4,
     icon: const Icon(Icons.add, color: Colors.white),
     label: const Text(
       'Apply for Leave',
       style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
     ),
   ),
-  floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
+  floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
-  // ✅ Helper to build leave data rows
-  Widget _buildLeaveRow(Map<String, dynamic> data, int index) {
+  // ✅ Helper to build leave data cards
+  Widget _buildLeaveCard(Map<String, dynamic> data, int index) {
     // Determine color based on status
-    Color statusColor;
+    Color itemStatusColor;
+    IconData statusIcon;
     switch (data['status']) {
-      case 'Approved': statusColor = Colors.green; break;
-      case 'Declined': statusColor = Colors.red; break;
-      default: statusColor = Colors.orange; // Pending
+      case 'Approved':
+        itemStatusColor = Colors.green;
+        statusIcon = Icons.check_circle_outline;
+        break;
+      case 'Declined':
+        itemStatusColor = Colors.redAccent;
+        statusIcon = Icons.highlight_off;
+        break;
+      default:
+        itemStatusColor = Colors.orange;
+        statusIcon = Icons.hourglass_empty;
     }
 
     // Format data from Firestore
     final String type = data['type'] ?? 'N/A';
     final String status = data['status'] ?? 'N/A';
     final String fromDate = data['startDate'] != null
-        ? DateFormat('MMM dd').format((data['startDate'] as Timestamp).toDate())
-        : '--';
-    final String toDate = data['endDate'] != null
-        ? DateFormat('MMM dd').format((data['endDate'] as Timestamp).toDate())
+        ? DateFormat('MMM dd, yyyy').format((data['startDate'] as Timestamp).toDate())
         : '--';
     final String reason = data['reason'] != null && (data['reason'] as String).isNotEmpty
         ? data['reason']
         : 'No reason provided.';
     final isExpanded = expandedRows[index] ?? false;
 
-    return Column(
-      children: [
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              expandedRows[index] = !isExpanded;
-            });
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 15),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: Colors.grey.shade100)),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() => expandedRows[index] = !isExpanded),
+            borderRadius: BorderRadius.vertical(
+              top: const Radius.circular(16),
+              bottom: Radius.circular(isExpanded ? 0 : 16),
             ),
-            child: Row(
-              children: [
-                Expanded(child: Center(child: _DataText(type, fontWeight: FontWeight.w600))),
-                Expanded(child: Center(child: _DataText(fromDate))),
-                Expanded(child: Center(child: _DataText(toDate))),
-                Expanded(
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: statusColor.withAlpha(26),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: _DataText(status, color: statusColor, fontWeight: FontWeight.bold),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: primaryColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.calendar_today_rounded,
+                        color: primaryColor, size: 24),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          type,
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: textColor),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Filed: $fromDate',
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: itemStatusColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(statusIcon, size: 14, color: itemStatusColor),
+                        const SizedBox(width: 4),
+                        Text(
+                          status,
+                          style: TextStyle(
+                            color: itemStatusColor,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        if (isExpanded)
-          Container(
-            padding: const EdgeInsets.all(16),
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.grey.shade50,
-              border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+          if (isExpanded)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius:
+                    const BorderRadius.vertical(bottom: Radius.circular(16)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'DETAILS',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                        letterSpacing: 1.0),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildDetailRow(
+                      Icons.event_available,
+                      'Date Range',
+                      "${DateFormat('MMM dd').format((data['startDate'] as Timestamp).toDate())} - ${DateFormat('MMM dd').format((data['endDate'] as Timestamp).toDate())}"),
+                  const SizedBox(height: 8),
+                  _buildDetailRow(Icons.notes, 'Reason', reason),
+                ],
+              ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Reason for Leave:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                const SizedBox(height: 5),
-                Text(
-                  reason,
-                  style: const TextStyle(fontSize: 12, color: Colors.black87),
-                ),
-              ],
-            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: Colors.grey[500]),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 2),
+              Text(value,
+                  style: const TextStyle(
+                      fontSize: 13,
+                      color: textColor,
+                      fontWeight: FontWeight.w500)),
+            ],
           ),
+        )
       ],
     );
   }
 
-  Widget _buildHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Employee: ${widget.employee.name}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            const Text('Location: Company A', style: TextStyle(color: Colors.black54, fontSize: 12)),
-          ],
+  Widget _buildEmployeeCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4F46E5), Color(0xFF818CF8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        Row(
-          children: [
-            const Text('Status: ',
-                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 12)),
-            Text(widget.currentStatus,
-                style: TextStyle(
-                    color: widget.statusColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12)),
-          ],
-        )
-      ],
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF4F46E5).withValues(alpha: 0.3),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: Colors.white.withValues(alpha: 0.2),
+            child: Text(
+              widget.employee.name[0].toUpperCase(),
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.employee.name,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                          color: widget.statusColor, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      widget.currentStatus,
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.9), fontSize: 12),
+                    ),
+                  ],
+                )
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -302,14 +400,14 @@ class _LeavePageState extends State<LeavePage> {
     return Row(
       children: [
         Expanded(
-          child: InkWell(
+          child: GestureDetector(
             onTap: _selectYear,
             child: _buildFilterDropdown(_selectedYear.toString(), Icons.calendar_today_outlined),
           ),
         ),
         const SizedBox(width: 15),
         Expanded(
-          child: InkWell(
+          child: GestureDetector(
             onTap: _selectMonth,
             child: _buildFilterDropdown(DateFormat('MMMM').format(DateTime(0, _selectedMonth)), Icons.keyboard_arrow_down),
           ),
@@ -320,17 +418,19 @@ class _LeavePageState extends State<LeavePage> {
 
   Widget _buildFilterDropdown(String value, IconData icon) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.black87),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-          Icon(icon, size: 18),
+          Text(value,
+              style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w600, color: textColor)),
+          Icon(icon, size: 18, color: Colors.grey),
         ],
       ),
     );
@@ -340,7 +440,7 @@ class _LeavePageState extends State<LeavePage> {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.event_busy_outlined, size: 80, color: Colors.grey.shade300),
+        Icon(Icons.event_busy_rounded, size: 80, color: Colors.grey.shade300),
         const SizedBox(height: 10),
         const Text('No Leave Requests', style: TextStyle(color: Colors.grey, fontSize: 14)),
       ],
@@ -539,10 +639,21 @@ class _ApplyLeaveFormState extends State<_ApplyLeaveForm> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('File a Leave', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              const Text('File a Leave',
+                  style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1E293B))),
               const SizedBox(height: 20),
               DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: 'Leave Type', border: OutlineInputBorder()),
+                decoration: InputDecoration(
+                  labelText: 'Leave Type',
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none),
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                ),
                 initialValue: _selectedLeaveType,
                 items: _leaveTypes.map((type) => DropdownMenuItem(value: type, child: Text(type))).toList(),
                 onChanged: (value) => setState(() => _selectedLeaveType = value),
@@ -554,7 +665,15 @@ class _ApplyLeaveFormState extends State<_ApplyLeaveForm> {
                   Expanded(
                     child: TextFormField(
                       controller: _startDateController,
-                      decoration: const InputDecoration(labelText: 'Start Date', border: OutlineInputBorder(), suffixIcon: Icon(Icons.calendar_today)),
+                      decoration: InputDecoration(
+                          labelText: 'Start Date',
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none),
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                          suffixIcon:
+                              const Icon(Icons.calendar_today, size: 18)),
                       readOnly: true,
                       onTap: () => _selectDate(context, true),
                       validator: (value) => value == null || value.isEmpty ? 'Select a start date' : null,
@@ -564,7 +683,15 @@ class _ApplyLeaveFormState extends State<_ApplyLeaveForm> {
                   Expanded(
                     child: TextFormField(
                       controller: _endDateController,
-                      decoration: const InputDecoration(labelText: 'End Date', border: OutlineInputBorder(), suffixIcon: Icon(Icons.calendar_today)),
+                      decoration: InputDecoration(
+                          labelText: 'End Date',
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none),
+                          filled: true,
+                          fillColor: Colors.grey[100],
+                          suffixIcon:
+                              const Icon(Icons.calendar_today, size: 18)),
                       readOnly: true,
                       onTap: () => _selectDate(context, false),
                       validator: (value) => value == null || value.isEmpty ? 'Select an end date' : null,
@@ -575,7 +702,14 @@ class _ApplyLeaveFormState extends State<_ApplyLeaveForm> {
               const SizedBox(height: 15),
               TextFormField(
                 controller: _reasonController,
-                decoration: const InputDecoration(labelText: 'Reason (Optional)', border: OutlineInputBorder()),
+                decoration: InputDecoration(
+                  labelText: 'Reason (Optional)',
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none),
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                ),
                 maxLines: 3,
               ),
               const SizedBox(height: 25),
@@ -584,9 +718,10 @@ class _ApplyLeaveFormState extends State<_ApplyLeaveForm> {
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _submitLeaveRequest,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
+                    backgroundColor: const Color(0xFF4F46E5),
                     padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                   child: _isLoading
                       ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
@@ -596,35 +731,6 @@ class _ApplyLeaveFormState extends State<_ApplyLeaveForm> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _HeaderText extends StatelessWidget {
-  final String text;
-  const _HeaderText(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(text, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12));
-  }
-}
-
-class _DataText extends StatelessWidget {
-  final String text;
-  final Color? color;
-  final FontWeight? fontWeight;
-  const _DataText(this.text, {this.color, this.fontWeight});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 11,
-        color: color ?? Colors.black87,
-        fontWeight: fontWeight ?? FontWeight.normal,
       ),
     );
   }

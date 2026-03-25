@@ -236,9 +236,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
           borderRadius: BorderRadius.circular(15),
           boxShadow: [
             if (isUnread)
-              BoxShadow(color: Colors.black.withAlpha(20), blurRadius: 10, offset: const Offset(0, 4))
+              BoxShadow(color: Colors.black.withValues(alpha: .08), blurRadius: 10, offset: const Offset(0, 4))
           ],
-          border: isUnread ? Border.all(color: color.withAlpha(77)) : null,
+          border: isUnread ? Border.all(color: color.withValues(alpha: .3)) : null,
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -246,8 +246,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: color.withAlpha(77),
-                border: Border.all(color: color.withAlpha(77), width: 0.1),
+                color: color.withValues(alpha: .1),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: color, size: 24),

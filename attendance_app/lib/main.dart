@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; 
+import 'package:supabase_flutter/supabase_flutter.dart'; // ✅ ADD THIS
 import 'firebase_options.dart';
 
 // Screens
 import 'screens/splash_anim.dart';
 import 'pages/login_page.dart'; // Ensure this path is correct
-import '../screens/admin/admin_panel.dart';   // ✅ Import your new Admin Panel
+import 'screens/admin/admin_panel.dart';   // ✅ Import your new Admin Panel
 
 // Utils
 import 'utils/session_manager.dart'; 
@@ -14,7 +14,7 @@ import 'utils/session_manager.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ Initialize Firebase
+  // ✅ Firebase init (existing mo)
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );

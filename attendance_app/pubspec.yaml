@@ -37,6 +37,7 @@ dependencies:
   intl: ^0.19.0
 
 <<<<<<< HEAD
+<<<<<<< HEAD
   # Shared preference
   shared_preferences: ^2.2.2
 =======
@@ -49,6 +50,10 @@ dependencies:
   #shared preferences
   shared_preferences: ^2.0.15
 >>>>>>> origin/attendance-branch
+=======
+  # Shared preference
+  shared_preferences: ^2.2.2
+>>>>>>> 08fe35040e21b9e3ced2c0a4f10d93b4aac2ac8e
 
 dev_dependencies:
   flutter_test:

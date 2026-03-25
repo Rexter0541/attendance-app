@@ -10,8 +10,10 @@ class ProfilePage extends StatefulWidget {
   final Employee employee;
   const ProfilePage({super.key, required this.employee});
 
-  static const Color bgColor = Color(0xFFF2F3F7);
-  static const Color primaryColor = Color(0xFF6C63FF);
+  static const Color bgColor = Color(0xFFF8F9FC);
+  static const Color primaryColor = Color(0xFF4F46E5);
+  static const Color cardColor = Colors.white;
+  static const Color textColor = Color(0xFF1E293B);
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -120,17 +122,23 @@ class _ProfilePageState extends State<ProfilePage> {
       debugPrint('Nagsisimulang mag-upload sa Supabase storage...');
       final bytes = await pickedFile.readAsBytes();
       await supabase.storage
-          .from('employee-images')
+          .from('employee-profile')
           .uploadBinary(filePath, bytes, fileOptions: FileOptions(contentType: pickedFile.mimeType ?? 'image/jpeg'));
       debugPrint('Tagumpay ang pag-upload. File path: $filePath');
 
       final publicUrl =
-          supabase.storage.from('employee-images').getPublicUrl(filePath);
+          supabase.storage.from('employee-profile').getPublicUrl(filePath);
       debugPrint('Nakuha ang public URL: $publicUrl');
       
       // Save the new URL to Firestore and update the local state
       await _updateUserProfileImageUrl(publicUrl);
 
+    } on StorageException catch (e) {
+      debugPrint('Supabase Storage Error: ${e.message}');
+      if (mounted) {
+        final msg = e.statusCode == '404' ? 'Bucket "employee-profile" missing in Supabase.' : 'Storage Error: ${e.message}';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+      }
     } catch (e) {
       debugPrint('Nagkaroon ng error habang nag-a-upload: $e');
       if (mounted) {
@@ -351,154 +359,188 @@ await showDialog(
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: ProfilePage.bgColor,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.only(left: 20, right: 20, top: 20, bottom: 50),
-          child: Column(
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(25),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(color: Colors.black, width: 1.5),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 15,
-                      offset: Offset(0, 8),
-                    )
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    // --- Header ---
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Profile',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w900, fontSize: 28),
-                          ),
-                          Text(
-                            'Manage your information and preferences',
-                            style: TextStyle(
-                                color: Colors.grey[600], fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-
-                    _buildAvatar(),
-                    const SizedBox(height: 15),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(_name,
-                            style: const TextStyle(
-                                fontSize: 22, fontWeight: FontWeight.bold)),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () => _editField('Name', 'name', _name),
-                          child: const Icon(Icons.edit, size: 20, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                    const Text('Health Officer',
-                        style: TextStyle(
-                            color: Colors.grey,
-                            fontWeight: FontWeight.w500)),
-                    const SizedBox(height: 30),
-
-                    // --- SECTION: Personal Information ---
-                    _buildSectionLabel('Personal Information'),
-                    
-                    // Employee ID is read-only (System Generated)
-                    _buildProfileItem(Icons.badge_outlined, 'Employee ID', _employeeIdDisplay),
-                    
-                    _buildProfileItem(Icons.email_outlined, 'Email', _email),
-                        
-                    _buildProfileItem(Icons.phone_android_outlined, 'Phone', _phone,
-                        canEdit: true, onTap: () => _editField('Phone', 'phone', _phone)),
-                        
-                    _buildProfileItem(Icons.location_on_outlined, 'Office', _office,
-                        canEdit: true, onTap: () => _editField('Office', 'office', _office)),
-
-                    const Divider(height: 40, thickness: 1),
-
-                    // --- SECTION: Employment Details ---
-                    _buildSectionLabel('Employment'),
-                    _buildProfileItem(Icons.event_available,
-                        'Employment Status', 'Full-Time Regular'),
-                    _buildProfileItem(
-                        Icons.schedule, 'Work Schedule', '08:00 AM - 05:00 PM'),
-                    _buildProfileItem(Icons.supervisor_account,
-                        'Immediate Supervisor', 'Engr. Ayro'),
-
-                    const Divider(height: 40, thickness: 1),
-
-                    // --- SECTION: Settings & Security ---
-                    _buildSectionLabel('Settings & Security'),
-                    _buildMenuOption(Icons.lock_outline, 'Change Password', 
-                        onTap: _showChangePasswordDialog),
-                    _buildMenuOption(
-                      Icons.notifications_none_outlined,
-                      'Notifications',
-                      onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => NotificationsPage(employee: widget.employee))),
-                    ),
-
-                    const Divider(height: 40, thickness: 1),
-
-                    // --- SECTION: Emergency ---
-                    _buildSectionLabel('Emergency Contact'),
-                    _buildProfileItem(Icons.contact_phone_outlined, 'Contact Person', _emergencyName,
-                        canEdit: true, onTap: () => _editField('Contact Person', 'emergencyContactName', _emergencyName)),
-                        
-                    _buildProfileItem(Icons.family_restroom, 'Relationship', _emergencyRelation,
-                        canEdit: true, onTap: () => _editField('Relationship', 'emergencyContactRelation', _emergencyRelation)),
-
-                    const Divider(height: 40, thickness: 1),
-
-                    // --- SECTION: Support & About ---
-                    _buildSectionLabel('Support'),
-                    _buildMenuOption(Icons.help_outline, 'Help Center'),
-                    _buildMenuOption(
-                        Icons.privacy_tip_outlined, 'Privacy Policy'),
-                    _buildMenuOption(Icons.info_outline, 'App Version',
-                        trailing: 'v1.0.0'),
-
-                    const SizedBox(height: 10),
-                  ],
-                ),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        automaticallyImplyLeading: false, // Don't show back button on main tab
+        title: const Text('My Profile',
+            style: TextStyle(
+                color: ProfilePage.textColor, fontWeight: FontWeight.bold)),
+      ),
+      body: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
+        child: Column(
+          children: [
+            _buildProfileHeader(),
+            const SizedBox(height: 25),
+            _buildSectionContainer('Personal Information', [
+              _buildProfileItem(Icons.badge_outlined, 'Employee ID', _employeeIdDisplay),
+              _buildDivider(),
+              _buildProfileItem(Icons.email_outlined, 'Email', _email),
+              _buildDivider(),
+              _buildProfileItem(Icons.phone_android_outlined, 'Phone', _phone,
+                  canEdit: true,
+                  onTap: () => _editField('Phone', 'phone', _phone)),
+              _buildDivider(),
+              _buildProfileItem(Icons.location_on_outlined, 'Office', _office,
+                  canEdit: true,
+                  onTap: () => _editField('Office', 'office', _office)),
+            ]),
+            const SizedBox(height: 20),
+            _buildSectionContainer('Employment', [
+              _buildProfileItem(
+                  Icons.work_outline, 'Employment Status', 'Full-Time Regular'),
+              _buildDivider(),
+              _buildProfileItem(
+                  Icons.schedule, 'Work Schedule', '08:00 AM - 05:00 PM'),
+              _buildDivider(),
+              _buildProfileItem(Icons.supervisor_account_outlined,
+                  'Immediate Supervisor', 'Engr. Ayro'),
+            ]),
+            const SizedBox(height: 20),
+            _buildSectionContainer('Emergency Contact', [
+              _buildProfileItem(
+                  Icons.contact_phone_outlined, 'Contact Person', _emergencyName,
+                  canEdit: true,
+                  onTap: () => _editField('Contact Person',
+                      'emergencyContactName', _emergencyName)),
+              _buildDivider(),
+              _buildProfileItem(
+                  Icons.family_restroom, 'Relationship', _emergencyRelation,
+                  canEdit: true,
+                  onTap: () => _editField('Relationship',
+                      'emergencyContactRelation', _emergencyRelation)),
+            ]),
+            const SizedBox(height: 20),
+            _buildSectionContainer('Settings & Security', [
+              _buildMenuOption(Icons.lock_outline, 'Change Password',
+                  onTap: _showChangePasswordDialog),
+              _buildDivider(),
+              _buildMenuOption(
+                Icons.notifications_none_outlined,
+                'Notifications',
+                onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => NotificationsPage(
+                            employee: widget.employee))),
               ),
-            ],
-          ),
+            ]),
+            const SizedBox(height: 20),
+            _buildSectionContainer('Support', [
+              _buildMenuOption(Icons.help_outline, 'Help Center'),
+              _buildDivider(),
+              _buildMenuOption(Icons.privacy_tip_outlined, 'Privacy Policy'),
+              _buildDivider(),
+              _buildMenuOption(Icons.info_outline, 'App Version',
+                  trailing: 'v1.0.0'),
+            ]),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildSectionLabel(String text) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 15),
-        child: Text(
-          text.toUpperCase(),
-          style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              color: ProfilePage.primaryColor,
-              letterSpacing: 1.2),
+  Widget _buildProfileHeader() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4F46E5), Color(0xFF818CF8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF4F46E5).withAlpha(16),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
+      child: Column(
+        children: [
+          _buildAvatar(),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                _name,
+                style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => _editField('Name', 'name', _name),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(51), // 20% opacity
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.edit, size: 14, color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Health Officer', // Or widget.employee.role if available
+            style: TextStyle(
+                fontSize: 14, color: Colors.white.withAlpha(230)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionContainer(String title, List<Widget> children) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey,
+                letterSpacing: 1.0),
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: ProfilePage.cardColor,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withAlpha(28),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(children: children),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDivider() {
+    return Divider(
+      height: 1,
+      thickness: 1,
+      color: Colors.grey.shade100,
+      indent: 16,
+      endIndent: 16,
     );
   }
 
@@ -508,34 +550,32 @@ await showDialog(
       child: Stack(
         children: [
           Container(
+            padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.black, width: 2),
+              border: Border.all(color: Colors.white.withAlpha(128), width: 2),
             ),
             child: CircleAvatar(
-              radius: 55,
-              backgroundColor: const Color(0xFFE0E0E0),
+              radius: 50,
+              backgroundColor: Colors.white.withAlpha(51), // 20% opacity
               backgroundImage:
                   imageUrl != null ? NetworkImage(imageUrl!) : null,
               child: imageUrl == null
-                  ? const Icon(Icons.person,
-                      size: 65, color: Colors.white)
+                  ? const Icon(Icons.person, size: 50, color: Colors.white)
                   : null,
             ),
           ),
           Positioned(
-            bottom: 5,
-            right: 5,
+            bottom: 0,
+            right: 0,
             child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.black,
+              padding: const EdgeInsets.all(8),
+              decoration: const BoxDecoration(
+                color: Colors.white,
                 shape: BoxShape.circle,
-                border:
-                    Border.all(color: Colors.white, width: 2),
               ),
               child: const Icon(Icons.camera_alt,
-                  size: 16, color: Colors.white),
+                  size: 16, color: ProfilePage.primaryColor),
             ),
           ),
         ],
@@ -545,18 +585,19 @@ await showDialog(
 
   Widget _buildProfileItem(IconData icon, String label, String value,
       {bool canEdit = false, VoidCallback? onTap}) {
-    return GestureDetector(
+    return InkWell(
       onTap: canEdit ? onTap : null,
+      borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding: const EdgeInsets.only(bottom: 18),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                  color: ProfilePage.bgColor,
-                  borderRadius: BorderRadius.circular(10)),
-              child: Icon(icon, size: 18, color: Colors.black87),
+                  color: ProfilePage.primaryColor.withAlpha(26), // 10% opacity
+                  borderRadius: BorderRadius.circular(12)),
+              child: Icon(icon, size: 20, color: ProfilePage.primaryColor),
             ),
             const SizedBox(width: 15),
             Expanded(
@@ -565,20 +606,20 @@ await showDialog(
                 children: [
                   Text(label,
                       style: const TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey,
-                          fontWeight: FontWeight.w500)),
+                          fontSize: 12,
+                          color: Colors.grey)),
+                  const SizedBox(height: 2),
                   Text(value,
                       style: const TextStyle(
                           fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87)),
+                          fontWeight: FontWeight.w600,
+                          color: ProfilePage.textColor)),
                 ],
               ),
             ),
             if (canEdit)
               const Icon(Icons.edit_note,
-                  size: 22, color: ProfilePage.primaryColor),
+                  size: 24, color: Colors.grey),
           ],
         ),
       ),
@@ -589,19 +630,19 @@ await showDialog(
       {String? trailing, VoidCallback? onTap}) {
     return InkWell(
       onTap: onTap ?? () {},
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding:
-            const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Icon(icon, size: 22, color: Colors.black87),
+            Icon(icon, size: 22, color: ProfilePage.textColor),
             const SizedBox(width: 15),
             Expanded(
                 child: Text(title,
                     style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600))),
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: ProfilePage.textColor))),
             if (trailing != null)
               Text(trailing,
                   style: const TextStyle(
@@ -609,7 +650,7 @@ await showDialog(
                       color: ProfilePage.primaryColor,
                       fontWeight: FontWeight.bold)),
             const SizedBox(width: 5),
-            const Icon(Icons.arrow_forward_ios,
+            Icon(Icons.arrow_forward_ios,
                 size: 14, color: Colors.black26),
           ],
         ),
