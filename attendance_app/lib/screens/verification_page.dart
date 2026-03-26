@@ -10,6 +10,9 @@ import 'package:geolocator/geolocator.dart';
 import 'package:camera/camera.dart'; 
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart'; 
 import 'package:supabase_flutter/supabase_flutter.dart'; 
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:device_info_plus/device_info_plus.dart'; // Added for technical detection
+
 import '../models/attendance_session.dart';
 import '../models/employee.dart';
 import '../pages/timein_page.dart';
@@ -18,6 +21,24 @@ import '../pages/home_page.dart';
 import '../services/attendance_service.dart';
 import '../services/location_service.dart';
 import '../pages/qr_scanner_page.dart';
+
+// Helper function to get technical hardware/browser info
+Future<String> _getTechnicalDeviceName() async {
+  DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+  
+  if (kIsWeb) {
+    WebBrowserInfo webInfo = await deviceInfo.webBrowserInfo;
+    // Captures: "CHROME on Win32" or "SAFARI on MacIntel"
+    return '${webInfo.browserName.name.toUpperCase()} on ${webInfo.platform}';
+  } else if (Platform.isAndroid) {
+    AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+    return '${androidInfo.manufacturer.toUpperCase()} ${androidInfo.model}';
+  } else if (Platform.isIOS) {
+    IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
+    return 'APPLE ${iosInfo.utsname.machine}';
+  }
+  return 'UNKNOWN SYSTEM';
+}
 
 class VerificationPage extends StatefulWidget {
   final Employee employee;
@@ -238,14 +259,21 @@ class _VerificationPageState extends State<VerificationPage> {
   }
 
   Future<void> _finalizeVerification() async {
-    _addLog('Creating Attendance Session...');
+    _addLog('Securing technical identity...');
+
+    // Detect technical hardware/browser signature
+    String deviceSignature = await _getTechnicalDeviceName();
     
+    _addLog('IDENTIFIED: $deviceSignature');
+    _addLog('Creating Attendance Session...');
+
     final attendanceId = await attendanceService.createAttendance(
       employee: widget.employee,
       lat: userPosition!.latitude,
       lng: userPosition!.longitude,
       distance: distanceFromOffice,
       photoUrl: _capturedPhotoUrl, 
+      deviceUsed: deviceSignature, // Passed to service
     );
 
     widget.employee.attendanceId = attendanceId;
@@ -416,7 +444,7 @@ class _VerificationPageState extends State<VerificationPage> {
 }
 
 // =====================================================
-// LIVENESS CAMERA PAGE (ORIGINAL VERSION)
+// LIVENESS CAMERA PAGE (UNCHANGED)
 // =====================================================
 
 enum LivenessStep { lookFront, lookLeft, lookRight, smile }

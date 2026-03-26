@@ -49,7 +49,8 @@ class AttendanceService {
     required double lat,
     required double lng,
     required double distance,
-    String? photoUrl, // ✅ Added to receive URL from VerificationPage
+    String? photoUrl,
+    String? deviceUsed, // ✅ Added to fix 'undefined_named_parameter'
   }) async {
 
     final docRef = await _firestore.collection("attendance").add({
@@ -58,7 +59,8 @@ class AttendanceService {
       "status": "verified",
       "timeIn": null,
       "timeOut": null,
-      "verification_photo": photoUrl, // ✅ Saves the Supabase link here
+      "verification_photo": photoUrl,
+      "deviceUsed": deviceUsed ?? "Unknown Device", // ✅ Stores the device identity
 
       "coords": {
         "lat": lat,

@@ -50,13 +50,11 @@ class _TimeInPageState extends State<TimeInPage> {
   // INITIALIZE SESSION (FIX FOR BLANK TIMES ON RESTART)
   // =====================================================
   Future<void> _initAttendanceSession() async {
-    // If we already have the ID from the previous screen, use it immediately
     if (widget.employee.attendanceId != null) {
       _listenAttendance(widget.employee.attendanceId!);
       return;
     }
 
-    // Otherwise, search Firestore for today's active record
     try {
       final today = DateTime.now();
       final startOfDay = DateTime(today.year, today.month, today.day);
@@ -127,20 +125,18 @@ class _TimeInPageState extends State<TimeInPage> {
     _addLog('Recording Time In...');
     await _animateFixedDuration(const Duration(seconds: 1));
     
-    // Create reference and get ID
     final docRef = FirebaseFirestore.instance.collection('attendance').doc(widget.employee.attendanceId);
     
     await docRef.set({
-      'employeeId': widget.employee.id, // Ensure this is saved for queries
+      'employeeId': widget.employee.id,
       'employeeName': widget.employee.name,
       'timeIn': FieldValue.serverTimestamp(), 
       'status': 'Timed In',
       'timestamp': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    // --- NOTIFICATION LOGIC ---
     final now = DateTime.now();
-    final officialStart = DateTime(now.year, now.month, now.day, 8, 15); // 8:15 AM threshold
+    final officialStart = DateTime(now.year, now.month, now.day, 8, 15);
     final isLate = now.isAfter(officialStart);
 
     final title = isLate ? 'You are Late' : 'Time-In Successful';
@@ -157,10 +153,9 @@ class _TimeInPageState extends State<TimeInPage> {
       'isRead': false,
       'timestamp': FieldValue.serverTimestamp(),
     });
-    // --------------------------
 
     _addLog('Clock in recorded successfully ✅');
-    _listenAttendance(docRef.id); // Ensure we are listening to this specific doc
+    _listenAttendance(docRef.id);
     setState(() => isProcessing = false);
   }
 
@@ -257,6 +252,14 @@ class _TimeInPageState extends State<TimeInPage> {
     );
   }
 
+  // Helper to redirect back to home properly
+  void _navigateToHome() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => HomePage(employee: widget.employee)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loadingAttendance) {
@@ -266,24 +269,32 @@ class _TimeInPageState extends State<TimeInPage> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FC),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF1E293B)),
-          onPressed: () => Navigator.pop(context),
+    // Wrap with PopScope to prevent black screen on system back button
+    return PopScope(
+      canPop: false, // Prevent default pop
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _navigateToHome(); // Redirect to Home instead
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8F9FC),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF1E293B)),
+            onPressed: _navigateToHome, // Updated to use Home navigation
+          ),
+          title: const Text('Attendance Check-In',
+              style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold)),
+          centerTitle: true,
         ),
-        title: const Text('Attendance Check-In',
-            style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold)),
-        centerTitle: true,
-      ),
-      body: Center(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: _buildCard(),
+        body: Center(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: _buildCard(),
+            ),
           ),
         ),
       ),
@@ -333,7 +344,6 @@ class _TimeInPageState extends State<TimeInPage> {
           ),
           const SizedBox(height: 30),
 
-          // Time Logs Container
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(

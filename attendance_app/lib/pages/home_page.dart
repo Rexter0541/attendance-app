@@ -37,20 +37,18 @@ class _HomePageState extends State<HomePage> {
   int leaveCount = 0;
 
   // --- Constants ---
-  static const int shiftMinutes = 480; // 8 Hours (Regular)
-  static const int maxOTMinutes = 600; // 10 Hours Total (8h + 2h OT)
+  static const int shiftMinutes = 480; 
+  static const int maxOTMinutes = 600; 
   
-  // UI Constants (Modern Design System)
   static const Color bgColor = Color(0xFFF8F9FC);
   static const Color primaryColor = Color(0xFF4F46E5);
   static const Color cardColor = Colors.white;
   static const Color textColor = Color(0xFF1E293B);
   
-  // Status Colors
-  static const Color presentColor = Color(0xFF10B981); // Emerald
-  static const Color absentColor = Color(0xFFEF4444);  // Red
-  static const Color lateColor = Color(0xFFF59E0B);    // Amber
-  static const Color leaveColor = Color(0xFF8B5CF6);   // Violet
+  static const Color presentColor = Color(0xFF10B981);
+  static const Color absentColor = Color(0xFFEF4444);  
+  static const Color lateColor = Color(0xFFF59E0B);    
+  static const Color leaveColor = Color(0xFF8B5CF6);   
 
   late StreamSubscription<QuerySnapshot> _activityListener;
   List<Map<String, dynamic>> recentActivities = [];
@@ -184,7 +182,7 @@ class _HomePageState extends State<HomePage> {
       if (totalWorkedMinutes >= maxOTMinutes) {
         currentStatus = 'Max OT Reached';
         statusColor = Colors.redAccent;
-        _handleAutoTimeout(); // Force stop the clock in DB
+        _handleAutoTimeout(); 
       } else if (totalWorkedMinutes >= shiftMinutes) {
         currentStatus = 'Overtime';
         statusColor = Colors.orangeAccent;
@@ -291,14 +289,11 @@ class _HomePageState extends State<HomePage> {
     return {'text': 'Late', 'color': lateColor};
   }
 
-  // --- UI PROGRESS CALCULATIONS ---
-
   String _getWorkingDurationText() {
     if (todayTimeIn == null) return '0h 0m';
     DateTime end = isTimedIn ? DateTime.now() : (lastTimeOut ?? DateTime.now());
     int totalMinutes = end.difference(todayTimeIn!).inMinutes;
 
-    // Logic: Stop the visible clock at 10 hours
     if (totalMinutes > maxOTMinutes) {
       totalMinutes = maxOTMinutes;
     }
@@ -313,15 +308,13 @@ class _HomePageState extends State<HomePage> {
     DateTime end = isTimedIn ? DateTime.now() : (lastTimeOut ?? DateTime.now());
     final diff = end.difference(todayTimeIn!);
     
-    // Logic: Progress is now relative to the 10-hour max limit
     double percent = diff.inMinutes / maxOTMinutes; 
-    return percent.clamp(0.0, 1.0); // Never let the bar go off-screen
+    return percent.clamp(0.0, 1.0); 
   }
 
   // --- DASHBOARD UI ---
 
   Widget dashboardBody(Employee displayEmployee) {
-    // Determine greeting based on time
     final hour = DateTime.now().hour;
     String greeting = 'Good Morning';
     if (hour >= 12 && hour < 17) greeting = 'Good Afternoon';
@@ -333,7 +326,6 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Custom Header (Replaces AppBar)
           SafeArea(
             bottom: false,
             child: Row(
@@ -372,19 +364,18 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 25),
 
-          // Working Timer Card
           _buildWorkingHourCard(),
           
           const SizedBox(height: 25),
           
-          // Stats Grid
+          // Stats Grid - Updated childAspectRatio to prevent overflow
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             crossAxisCount: 2,
             crossAxisSpacing: 15,
             mainAxisSpacing: 15,
-            childAspectRatio: 1.5,
+            childAspectRatio: 1.35, 
             children: [
               _buildStatCard('Present', presentCount.toString(), Icons.check_circle_rounded, presentColor),
               _buildStatCard('Absent', absentCount.toString(), Icons.cancel_rounded, absentColor),
@@ -395,7 +386,6 @@ class _HomePageState extends State<HomePage> {
           
           const SizedBox(height: 25),
 
-          // Quick Actions
           Row(
             children: [
               Expanded(
@@ -421,7 +411,7 @@ class _HomePageState extends State<HomePage> {
           isLoadingActivities 
             ? const Center(child: CircularProgressIndicator(color: primaryColor))
             : SizedBox(
-                height: 300, // Ito yung "box limiter" para hindi humaba ang buong page
+                height: 300, 
                 child: ListView.builder(
                   physics: const BouncingScrollPhysics(),
                   itemCount: recentActivities.length,
@@ -440,7 +430,7 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildStatCard(String title, String count, IconData icon, Color color) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12), // Reduced slightly from 16 to avoid overflow
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [color, color.withValues(alpha: 0.7)],
@@ -458,15 +448,23 @@ class _HomePageState extends State<HomePage> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween, // Distributes space better than Spacer()
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10)),
             child: Icon(icon, color: Colors.white, size: 20),
           ),
-          const Spacer(),
-          Text(count, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-          Text(title, style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500)),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FittedBox( // Ensures large numbers don't push content off-screen
+                fit: BoxFit.scaleDown,
+                child: Text(count, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+              ),
+              Text(title, style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.w500)),
+            ],
+          ),
         ],
       ),
     );
@@ -503,11 +501,8 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 20),
           Stack(
             children: [
-              // Background bar
               Container(
                   height: 8, decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(10))),
-              
-              // Progress bar capped at maxOTMinutes (600)
               FractionallySizedBox(
                 widthFactor: _getWorkingProgress(),
                 child: Container(
@@ -665,21 +660,15 @@ class _HomePageState extends State<HomePage> {
             ),
             onPressed: () async {
               try {
-                // 1. Clear Local Session Data
                 final SharedPreferences prefs = await SharedPreferences.getInstance();
                 await prefs.setBool('isLoggedIn', false);
                 await prefs.remove('userId');
                 await prefs.remove('userName');
 
-                // 2. Sign out from Firebase
                 await FirebaseAuth.instance.signOut();
 
-                // ⭐ FIX: Check if the widget is still in the tree 
-                // and if the dialog context is still valid
                 if (!mounted || !dialogContext.mounted) return;
 
-                // 3. Clear navigation stack and go to Login
-                // Use 'context' (from the State) to navigate away from the page
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -687,7 +676,6 @@ class _HomePageState extends State<HomePage> {
                 );
               } catch (e) {
                 debugPrint('Logout Error: $e');
-                // ⭐ FIX: Check dialogContext specifically before popping
                 if (dialogContext.mounted) {
                   Navigator.pop(dialogContext);
                 }
@@ -713,12 +701,9 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // If we are on the dashboard (index 0), we hide the AppBar because we use a custom header.
-    // For other pages (like Payroll), they have their own AppBars, so we also hide the global one to avoid double AppBars.
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('employees').doc(widget.employee.id).snapshots(),
       builder: (context, snapshot) {
-        // Use the stream data to update the employee object locally
         Employee displayEmployee = widget.employee;
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>;

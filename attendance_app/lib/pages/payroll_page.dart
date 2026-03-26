@@ -9,11 +9,12 @@ class PayrollPage extends StatefulWidget {
   final String currentStatus;
   final Color statusColor;
 
-  const PayrollPage(
-      {super.key,
-      required this.employee,
-      required this.currentStatus,
-      required this.statusColor});
+  const PayrollPage({
+    super.key,
+    required this.employee,
+    required this.currentStatus,
+    required this.statusColor,
+  });
 
   @override
   State<PayrollPage> createState() => _PayrollPageState();
@@ -32,6 +33,12 @@ class _PayrollPageState extends State<PayrollPage> {
   static const double _lateDeductionPerMinute = 0.01;
   static const int _requiredWorkHours = 8;
 
+  // UI Constants (Fixed prefer_const_declarations)
+  static const Color bgColor = Color(0xFFF8F9FC);
+  static const Color primaryColor = Color(0xFF4F46E5);
+  static const Color cardColor = Colors.white;
+  static const Color textColor = Color(0xFF1E293B);
+
   @override
   void initState() {
     super.initState();
@@ -41,22 +48,19 @@ class _PayrollPageState extends State<PayrollPage> {
     _recalculateAndSavePayroll(_selectedYear, _selectedMonth);
   }
 
-  /// MAIN FUNCTION: Recalculates based on filtered attendance
   Future<void> _recalculateAndSavePayroll(int year, int month) async {
     if (mounted) setState(() => _isLoading = true);
 
     List<Map<String, dynamic>> results = [];
     final now = DateTime.now();
-    // Use a date-only value for today to correctly determine if a period has passed.
     final today = DateTime(now.year, now.month, now.day);
 
     try {
-      // --- Period 1: 1st to 15th ---
       final period1Start = DateTime(year, month, 1);
       final period1End = DateTime(year, month, 15);
-      final isFinal1 = today.isAfter(period1End); // The period is final only the day AFTER it ends.
+      final isFinal1 = today.isAfter(period1End);
 
-      if (now.isAfter(period1Start) || now.isAtSameMomentAs(period1Start)) { // Still show processing data
+      if (now.isAfter(period1Start) || now.isAtSameMomentAs(period1Start)) {
         final period1Result = await _calculatePayForPeriod(period1Start, period1End);
         final netPay1 = period1Result['total'];
         final daily1 = period1Result['daily'];
@@ -70,12 +74,11 @@ class _PayrollPageState extends State<PayrollPage> {
         });
       }
 
-      // --- Period 2: 16th to end of month ---
       final period2Start = DateTime(year, month, 16);
-      final period2End = DateTime(year, month + 1, 0); // 0 day of next month gets last day of current month
+      final period2End = DateTime(year, month + 1, 0);
       final isFinal2 = today.isAfter(period2End);
 
-      if (now.isAfter(period2Start) || now.isAtSameMomentAs(period2Start)) { // Still show processing data
+      if (now.isAfter(period2Start) || now.isAtSameMomentAs(period2Start)) {
         final period2Result = await _calculatePayForPeriod(period2Start, period2End);
         final netPay2 = period2Result['total'];
         final daily2 = period2Result['daily'];
@@ -105,7 +108,6 @@ class _PayrollPageState extends State<PayrollPage> {
     }
   }
 
-  /// CALCULATE PAY: Now with the 9 hour 30 min (570 min) GHOST TIMEOUT update
   Future<Map<String, dynamic>> _calculatePayForPeriod(DateTime start, DateTime end) async {
     double totalPay = 0;
     List<Map<String, dynamic>> dailyBreakdown = [];
@@ -113,8 +115,8 @@ class _PayrollPageState extends State<PayrollPage> {
     final adjustedEnd = DateTime(end.year, end.month, end.day, 23, 59, 59);
 
     final attendanceSnapshot = await FirebaseFirestore.instance
-        .collection('attendance') 
-        .where('employeeId', isEqualTo: widget.employee.id) 
+        .collection('attendance')
+        .where('employeeId', isEqualTo: widget.employee.id)
         .where('timeIn', isGreaterThanOrEqualTo: start)
         .where('timeIn', isLessThanOrEqualTo: adjustedEnd)
         .get();
@@ -126,12 +128,9 @@ class _PayrollPageState extends State<PayrollPage> {
 
       if (timeIn == null) continue;
 
-      // --- GHOST TIMEOUT UPDATE ---
-      // 1. Determine effective end (real timeout or 'now' if they are still clocked in)
       final DateTime effectiveEnd = timeOut ?? DateTime.now();
       final int totalMinutesWorked = effectiveEnd.difference(timeIn).inMinutes;
 
-      // 2. Apply the 9h 30m (570 min) cap logic
       bool isCapped = false;
       DateTime calculationTimeOut;
       
@@ -141,7 +140,6 @@ class _PayrollPageState extends State<PayrollPage> {
       } else {
         calculationTimeOut = effectiveEnd;
       }
-      // ----------------------------
 
       final durationSeconds = calculationTimeOut.difference(timeIn).inSeconds;
       final hoursWorked = durationSeconds / 3600.0;
@@ -158,7 +156,7 @@ class _PayrollPageState extends State<PayrollPage> {
       if (hoursWorked >= _requiredWorkHours) {
         dailyEarning = _dailyWage;
       } else if (hoursWorked > 0) {
-        final hourlyRate = _dailyWage / _requiredWorkHours;
+        const hourlyRate = _dailyWage / _requiredWorkHours;
         dailyEarning = hoursWorked * hourlyRate;
       }
 
@@ -171,14 +169,13 @@ class _PayrollPageState extends State<PayrollPage> {
         'lateDeduction': lateDeduction.toStringAsFixed(2),
         'dailyEarning': dailyEarning.toStringAsFixed(2),
         'finalPay': finalDailyPay > 0 ? finalDailyPay.toStringAsFixed(2) : '0.00',
-        'isCapped': isCapped, // Tagging for UI
+        'isCapped': isCapped,
       });
     }
 
     return {'total': totalPay, 'daily': dailyBreakdown};
   }
 
-  /// SAVE PAYROLL: Saves to employees/{id}/payroll sub-collection
   Future<void> _savePayrollToFirestore(
       DateTime periodStart, DateTime periodEnd, double netPay, bool isFinal) async {
     
@@ -186,7 +183,7 @@ class _PayrollPageState extends State<PayrollPage> {
 
     final payrollDocRef = FirebaseFirestore.instance
         .collection('employees')
-        .doc(widget.employee.id) 
+        .doc(widget.employee.id)
         .collection('payroll')
         .doc(docId);
 
@@ -198,7 +195,6 @@ class _PayrollPageState extends State<PayrollPage> {
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
-      // Create a notification if the payroll is final/calculated
       if (isFinal) {
         await _createPayrollNotificationIfNeeded(docId, periodEnd, netPay);
       }
@@ -207,20 +203,16 @@ class _PayrollPageState extends State<PayrollPage> {
     }
   }
 
-  /// Creates a notification for the user about their payroll, but only if one hasn't been sent before.
   Future<void> _createPayrollNotificationIfNeeded(String payrollDocId, DateTime periodEnd, double netPay) async {
     if (user == null) return;
 
     final payrollDocRef = FirebaseFirestore.instance.collection('employees').doc(user!.uid).collection('payroll').doc(payrollDocId);
 
-    // 1. Check if a notification has already been sent for this payroll document.
     final payrollDoc = await payrollDocRef.get();
     if (payrollDoc.exists && payrollDoc.data()?['notificationSent'] == true) {
-      // If the document exists and the notification has already been sent, do nothing.
       return;
     }
 
-    // 2. If not sent, create the notification.
     await FirebaseFirestore.instance.collection('notifications').add({
       'recipientId': user!.uid,
       'title': 'Payroll Processed',
@@ -230,17 +222,8 @@ class _PayrollPageState extends State<PayrollPage> {
       'timestamp': FieldValue.serverTimestamp(),
     });
 
-    // 3. Mark this payroll document as having its notification sent.
     await payrollDocRef.update({'notificationSent': true});
-    debugPrint('Payroll notification sent for doc: $payrollDocId');
   }
-
-  // --- UI Logic (Redesigned for Modern Look) ---
-
-  static const Color bgColor = Color(0xFFF8F9FC);
-  static const Color primaryColor = Color(0xFF4F46E5);
-  static const Color cardColor = Colors.white;
-  static const Color textColor = Color(0xFF1E293B);
 
   @override
   Widget build(BuildContext context) {
@@ -274,7 +257,7 @@ class _PayrollPageState extends State<PayrollPage> {
               const SizedBox(height: 20),
               Expanded(
                 child: _isLoading
-                    ? Center(child: CircularProgressIndicator(color: primaryColor))
+                    ? const Center(child: CircularProgressIndicator(color: primaryColor))
                     : _payrollResults.isEmpty
                         ? _buildEmptyState()
                         : ListView.separated(
@@ -320,7 +303,7 @@ class _PayrollPageState extends State<PayrollPage> {
       child: Column(
         children: [
           InkWell(
-          onTap: () => setState(() => expandedRows[index] = !isExpanded),
+            onTap: () => setState(() => expandedRows[index] = !isExpanded),
             borderRadius: BorderRadius.vertical(
               top: const Radius.circular(16),
               bottom: Radius.circular(isExpanded ? 0 : 16),
@@ -404,7 +387,7 @@ class _PayrollPageState extends State<PayrollPage> {
               if (isCapped)
                 Container(
                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                   decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(4)),
+                   decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
                    child: const Text('AUTO-TIMEOUT (9.5h)', style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
                 ),
             ],
@@ -525,13 +508,16 @@ class _PayrollPageState extends State<PayrollPage> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return Column(
+ Widget _buildEmptyState() {
+    return const Column( // Added const here
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(Icons.receipt_long_outlined, size: 80, color: Colors.grey.shade300),
-        const SizedBox(height: 10),
-        const Text('No payroll records found', style: TextStyle(color: Colors.grey, fontSize: 14)),
+        Icon(Icons.receipt_long_outlined, size: 80, color: Colors.grey),
+        SizedBox(height: 10),
+        Text(
+          'No payroll records found', 
+          style: TextStyle(color: Colors.grey, fontSize: 14),
+        ),
       ],
     );
   }
@@ -558,13 +544,11 @@ class _YearPickerDialog extends StatelessWidget {
   const _YearPickerDialog({required this.initialYear});
   @override Widget build(BuildContext context) {
     final int currentYear = DateTime.now().year;
-    final List<int> years =
-        List.generate(6, (index) => currentYear - 5 + index).reversed.toList();
+    final List<int> years = List.generate(6, (index) => currentYear - 5 + index).reversed.toList();
 
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      title: const Text('Select Year',
-          style: TextStyle(fontWeight: FontWeight.bold)),
+      title: const Text('Select Year', style: TextStyle(fontWeight: FontWeight.bold)),
       content: SizedBox(
         width: 100,
         height: 250,
@@ -577,11 +561,8 @@ class _YearPickerDialog extends StatelessWidget {
               title: Text(
                 year.toString(),
                 style: TextStyle(
-                  fontWeight:
-                      year == initialYear ? FontWeight.bold : FontWeight.normal,
-                  color: year == initialYear
-                      ? _PayrollPageState.primaryColor
-                      : null,
+                  fontWeight: year == initialYear ? FontWeight.bold : FontWeight.normal,
+                  color: year == initialYear ? const Color(0xFF4F46E5) : null,
                 ),
               ),
               onTap: () => Navigator.of(context).pop(year),
@@ -599,8 +580,7 @@ class _MonthPickerDialog extends StatelessWidget {
   @override Widget build(BuildContext context) {
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      title: const Text('Select Month',
-          style: TextStyle(fontWeight: FontWeight.bold)),
+      title: const Text('Select Month', style: TextStyle(fontWeight: FontWeight.bold)),
       content: SizedBox(
         width: 100,
         height: 350,
@@ -613,11 +593,8 @@ class _MonthPickerDialog extends StatelessWidget {
             return ListTile(
               title: Text(monthName,
                   style: TextStyle(
-                      fontWeight:
-                          month == initialMonth ? FontWeight.bold : FontWeight.normal,
-                      color: month == initialMonth
-                          ? _PayrollPageState.primaryColor
-                          : null)),
+                      fontWeight: month == initialMonth ? FontWeight.bold : FontWeight.normal,
+                      color: month == initialMonth ? const Color(0xFF4F46E5) : null)),
               onTap: () => Navigator.of(context).pop(month),
             );
           },

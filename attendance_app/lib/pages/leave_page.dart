@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_single_quotes
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -8,11 +10,13 @@ class LeavePage extends StatefulWidget {
   final Employee employee;
   final String currentStatus;
   final Color statusColor;
-  const LeavePage(
-      {super.key,
-      required this.employee,
-      required this.currentStatus,
-      required this.statusColor});
+
+  const LeavePage({
+    super.key,
+    required this.employee,
+    required this.currentStatus,
+    required this.statusColor,
+  });
 
   @override
   State<LeavePage> createState() => _LeavePageState();
@@ -26,7 +30,6 @@ class _LeavePageState extends State<LeavePage> {
 
   static const Color bgColor = Color(0xFFF8F9FC);
   static const Color primaryColor = Color(0xFF4F46E5);
-  static const Color cardColor = Colors.white;
   static const Color textColor = Color(0xFF1E293B);
 
   @override
@@ -41,54 +44,47 @@ class _LeavePageState extends State<LeavePage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      barrierColor: Colors.black.withValues(alpha: 0.5),
       builder: (_) => const _ApplyLeaveForm(),
     );
   }
 
-  /// Shows a dialog to select the year.
   Future<void> _selectYear() async {
     final int? picked = await showDialog(
       context: context,
       builder: (context) => _YearPickerDialog(initialYear: _selectedYear),
     );
-    if (picked != null && picked != _selectedYear) {
-      setState(() => _selectedYear = picked);
-    }
+    if (picked != null && picked != _selectedYear) setState(() => _selectedYear = picked);
   }
 
-  /// Shows a dialog to select the month.
   Future<void> _selectMonth() async {
     final int? picked = await showDialog(
       context: context,
       builder: (context) => _MonthPickerDialog(initialMonth: _selectedMonth),
     );
-    if (picked != null && picked != _selectedMonth) {
-      setState(() => _selectedMonth = picked);
-    }
+    if (picked != null && picked != _selectedMonth) setState(() => _selectedMonth = picked);
   }
 
   @override
   Widget build(BuildContext context) {
+    DateTime startOfMonth = DateTime(_selectedYear, _selectedMonth, 1);
+    DateTime endOfMonth = DateTime(_selectedYear, _selectedMonth + 1, 0, 23, 59, 59);
+
     return Scaffold(
       backgroundColor: bgColor,
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        leading: Navigator.canPop(context)
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new, color: textColor, size: 20),
-                onPressed: () => Navigator.pop(context),
-              )
-            : null,
-        title: const Text(
-          'Leave Requests',
-          style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: textColor, size: 20),
+          onPressed: () => Navigator.pop(context),
         ),
+        title: const Text('Leave Requests', 
+          style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18, fontFamily: 'Helvetica')),
       ),
       body: SafeArea(
         child: Padding(
@@ -101,42 +97,30 @@ class _LeavePageState extends State<LeavePage> {
               const SizedBox(height: 20),
               _buildFilters(),
               const SizedBox(height: 20),
-
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('employees')
                       .doc(user?.uid)
                       .collection('leaves')
-                      .orderBy('filedDate', descending: true)
+                      .where('startDate', isGreaterThanOrEqualTo: startOfMonth)
+                      .where('startDate', isLessThanOrEqualTo: endOfMonth)
+                      .orderBy('startDate', descending: true)
                       .snapshots(),
                   builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator(color: primaryColor));
-                    }
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return _buildEmptyState();
-                    }
-
-                    // Filter leaves by selected year & month based on startDate
-                    final filteredDocs = snapshot.data!.docs.where((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      final startTimestamp = data['startDate'] as Timestamp?;
-                      if (startTimestamp == null) return false;
-                      final startDate = startTimestamp.toDate();
-                      return startDate.year == _selectedYear && startDate.month == _selectedMonth;
-                    }).toList();
-
-                    if (filteredDocs.isEmpty) {
-                      return _buildEmptyState();
-                    }
-
+                    if (snapshot.hasError) return const Center(child: Text('Query Error: Check Firestore Indexes'));
+                    if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: primaryColor));
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return _buildEmptyState();
+                    
+                    final docs = snapshot.data!.docs;
                     return ListView.separated(
                       physics: const BouncingScrollPhysics(),
-                      itemCount: filteredDocs.length,
+                      padding: const EdgeInsets.only(bottom: 100),
+                      itemCount: docs.length,
                       separatorBuilder: (context, index) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
-                        return _buildLeaveCard(filteredDocs[index].data() as Map<String, dynamic>, index);
+                         final data = docs[index].data() as Map<String, dynamic>;
+                         return _buildLeaveCard(data, index);
                       },
                     );
                   },
@@ -146,187 +130,14 @@ class _LeavePageState extends State<LeavePage> {
           ),
         ),
       ),
-       floatingActionButton: FloatingActionButton.extended(
-    onPressed: _showApplyLeaveForm,
-    backgroundColor: primaryColor,
-    elevation: 4,
-    icon: const Icon(Icons.add, color: Colors.white),
-    label: const Text(
-      'Apply for Leave',
-      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-    ),
-  ),
-  floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-    );
-  }
-
-  // ✅ Helper to build leave data cards
-  Widget _buildLeaveCard(Map<String, dynamic> data, int index) {
-    // Determine color based on status
-    Color itemStatusColor;
-    IconData statusIcon;
-    switch (data['status']) {
-      case 'Approved':
-        itemStatusColor = Colors.green;
-        statusIcon = Icons.check_circle_outline;
-        break;
-      case 'Declined':
-        itemStatusColor = Colors.redAccent;
-        statusIcon = Icons.highlight_off;
-        break;
-      default:
-        itemStatusColor = Colors.orange;
-        statusIcon = Icons.hourglass_empty;
-    }
-
-    // Format data from Firestore
-    final String type = data['type'] ?? 'N/A';
-    final String status = data['status'] ?? 'N/A';
-    final String fromDate = data['startDate'] != null
-        ? DateFormat('MMM dd, yyyy').format((data['startDate'] as Timestamp).toDate())
-        : '--';
-    final String reason = data['reason'] != null && (data['reason'] as String).isNotEmpty
-        ? data['reason']
-        : 'No reason provided.';
-    final isExpanded = expandedRows[index] ?? false;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-      decoration: BoxDecoration(
-        color: cardColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showApplyLeaveForm,
+        backgroundColor: primaryColor,
+        elevation: 4,
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text('Apply for Leave', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () => setState(() => expandedRows[index] = !isExpanded),
-            borderRadius: BorderRadius.vertical(
-              top: const Radius.circular(16),
-              bottom: Radius.circular(isExpanded ? 0 : 16),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: primaryColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(Icons.calendar_today_rounded,
-                        color: primaryColor, size: 24),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          type,
-                          style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: textColor),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Filed: $fromDate',
-                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: itemStatusColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(statusIcon, size: 14, color: itemStatusColor),
-                        const SizedBox(width: 4),
-                        Text(
-                          status,
-                          style: TextStyle(
-                            color: itemStatusColor,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (isExpanded)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius:
-                    const BorderRadius.vertical(bottom: Radius.circular(16)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'DETAILS',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey,
-                        letterSpacing: 1.0),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildDetailRow(
-                      Icons.event_available,
-                      'Date Range',
-                      "${DateFormat('MMM dd').format((data['startDate'] as Timestamp).toDate())} - ${DateFormat('MMM dd').format((data['endDate'] as Timestamp).toDate())}"),
-                  const SizedBox(height: 8),
-                  _buildDetailRow(Icons.notes, 'Reason', reason),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRow(IconData icon, String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 16, color: Colors.grey[500]),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label,
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              const SizedBox(height: 2),
-              Text(value,
-                  style: const TextStyle(
-                      fontSize: 13,
-                      color: textColor,
-                      fontWeight: FontWeight.w500)),
-            ],
-          ),
-        )
-      ],
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
@@ -334,204 +145,90 @@ class _LeavePageState extends State<LeavePage> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF4F46E5), Color(0xFF818CF8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: const LinearGradient(colors: [primaryColor, Color(0xFF818CF8)], begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF4F46E5).withValues(alpha: 0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: primaryColor.withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))],
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 24,
-            backgroundColor: Colors.white.withValues(alpha: 0.2),
-            child: Text(
-              widget.employee.name[0].toUpperCase(),
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
-            ),
-          ),
+          CircleAvatar(radius: 24, backgroundColor: Colors.white.withValues(alpha: 0.2), child: Text(widget.employee.name[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20))),
           const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.employee.name,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                          color: widget.statusColor, shape: BoxShape.circle),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      widget.currentStatus,
-                      style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.9), fontSize: 12),
-                    ),
-                  ],
-                )
-              ],
-            ),
-          ),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(widget.employee.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 4),
+            Row(children: [
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: widget.statusColor, shape: BoxShape.circle)),
+              const SizedBox(width: 8),
+              Text(widget.currentStatus, style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12)),
+            ]),
+          ])),
         ],
       ),
     );
   }
 
   Widget _buildFilters() {
-    return Row(
-      children: [
-        Expanded(
-          child: GestureDetector(
-            onTap: _selectYear,
-            child: _buildFilterDropdown(_selectedYear.toString(), Icons.calendar_today_outlined),
-          ),
-        ),
-        const SizedBox(width: 15),
-        Expanded(
-          child: GestureDetector(
-            onTap: _selectMonth,
-            child: _buildFilterDropdown(DateFormat('MMMM').format(DateTime(0, _selectedMonth)), Icons.keyboard_arrow_down),
-          ),
-        ),
-      ],
-    );
+    return Row(children: [
+      Expanded(child: GestureDetector(onTap: _selectYear, child: _buildFilterDropdown(_selectedYear.toString(), Icons.calendar_today_outlined))),
+      const SizedBox(width: 15),
+      Expanded(child: GestureDetector(onTap: _selectMonth, child: _buildFilterDropdown(DateFormat('MMMM').format(DateTime(0, _selectedMonth)), Icons.keyboard_arrow_down))),
+    ]);
   }
 
   Widget _buildFilterDropdown(String value, IconData icon) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w600, color: textColor)),
-          Icon(icon, size: 18, color: Colors.grey),
-        ],
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
+      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textColor)),
+        Icon(icon, size: 18, color: Colors.grey),
+      ]),
     );
   }
 
-  Widget _buildEmptyState() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.event_busy_rounded, size: 80, color: Colors.grey.shade300),
-        const SizedBox(height: 10),
-        const Text('No Leave Requests', style: TextStyle(color: Colors.grey, fontSize: 14)),
-      ],
-    );
-  }
-}
+  Widget _buildLeaveCard(Map<String, dynamic> data, int index) {
+    if (data['startDate'] == null) return const SizedBox.shrink();
 
-/// Year Picker Dialog
-class _YearPickerDialog extends StatelessWidget {
-  final int initialYear;
-  const _YearPickerDialog({required this.initialYear});
+    Color itemStatusColor;
+    IconData statusIcon;
+    switch (data['status']) {
+      case 'Approved': itemStatusColor = Colors.green; statusIcon = Icons.check_circle_outline; break;
+      case 'Declined': itemStatusColor = Colors.redAccent; statusIcon = Icons.highlight_off; break;
+      default: itemStatusColor = Colors.orange; statusIcon = Icons.hourglass_empty;
+    }
+    final isExpanded = expandedRows[index] ?? false;
+    final String fromDate = DateFormat('MMM dd, yyyy').format((data['startDate'] as Timestamp).toDate());
 
-  @override
-  Widget build(BuildContext context) {
-    final int currentYear = DateTime.now().year;
-    final List<int> years =
-        List.generate(6, (index) => currentYear - 5 + index).reversed.toList();
-
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      title: const Text('Select Year',
-          style: TextStyle(fontWeight: FontWeight.bold)),
-      content: SizedBox(
-        width: 100,
-        height: 250,
-        child: ListView.builder(
-          shrinkWrap: true,
-          itemCount: years.length,
-          itemBuilder: (context, index) {
-            final year = years[index];
-            return ListTile(
-              title: Text(
-                year.toString(),
-                style: TextStyle(
-                  fontWeight:
-                      year == initialYear ? FontWeight.bold : FontWeight.normal,
-                  color: year == initialYear
-                      ? _LeavePageState.primaryColor
-                      : null,
-                ),
-              ),
-              onTap: () => Navigator.of(context).pop(year),
-            );
-          },
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))]),
+      child: Column(children: [
+        ListTile(
+          onTap: () => setState(() => expandedRows[index] = !isExpanded),
+          leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: primaryColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.calendar_today_rounded, color: primaryColor, size: 20)),
+          title: Text(data['type'] ?? 'Leave', style: const TextStyle(fontWeight: FontWeight.bold, color: textColor)),
+          subtitle: Text('Filed: $fromDate', style: const TextStyle(fontSize: 12)),
+          trailing: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: itemStatusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(statusIcon, size: 12, color: itemStatusColor), const SizedBox(width: 4), Text(data['status'] ?? 'Pending', style: TextStyle(color: itemStatusColor, fontWeight: FontWeight.bold, fontSize: 11))])),
         ),
-      ),
+        if (isExpanded) Container(width: double.infinity, padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('DETAILS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.0)),
+          const SizedBox(height: 8),
+          _buildDetailItem(Icons.date_range, 'Duration', "${DateFormat('MMM dd').format((data['startDate'] as Timestamp).toDate())} - ${DateFormat('MMM dd').format((data['endDate'] as Timestamp).toDate())}"),
+          const SizedBox(height: 8),
+          _buildDetailItem(Icons.notes, 'Reason', data['reason'] ?? 'No reason provided.'),
+        ])),
+      ]),
     );
   }
+
+  Widget _buildDetailItem(IconData icon, String label, String value) => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(icon, size: 14, color: Colors.grey), const SizedBox(width: 8), Expanded(child: Text('$label: $value', style: const TextStyle(fontSize: 12, color: textColor)))]);
+  Widget _buildEmptyState() => Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.event_busy_rounded, size: 60, color: Colors.grey.shade300), const SizedBox(height: 16), const Text('No leave requests for this month', style: TextStyle(color: Colors.grey))]));
 }
 
-/// Month Picker Dialog
-class _MonthPickerDialog extends StatelessWidget {
-  final int initialMonth;
-  const _MonthPickerDialog({required this.initialMonth});
+// --- APPLY LEAVE FORM ---
 
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      title: const Text('Select Month',
-          style: TextStyle(fontWeight: FontWeight.bold)),
-      content: SizedBox(
-        width: 100,
-        height: 350,
-        child: ListView.builder(
-          shrinkWrap: true,
-          itemCount: 12,
-          itemBuilder: (context, index) {
-            final month = index + 1;
-            final monthName = DateFormat('MMMM').format(DateTime(0, month));
-            return ListTile(
-              title: Text(monthName,
-                  style: TextStyle(
-                      fontWeight:
-                          month == initialMonth ? FontWeight.bold : FontWeight.normal,
-                      color: month == initialMonth
-                          ? _LeavePageState.primaryColor
-                          : null)),
-              onTap: () => Navigator.of(context).pop(month),
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-/// Form widget shown in a modal bottom sheet to apply for leave.
 class _ApplyLeaveForm extends StatefulWidget {
   const _ApplyLeaveForm();
-
   @override
   State<_ApplyLeaveForm> createState() => _ApplyLeaveFormState();
 }
@@ -541,57 +238,17 @@ class _ApplyLeaveFormState extends State<_ApplyLeaveForm> {
   final _startDateController = TextEditingController();
   final _endDateController = TextEditingController();
   final _reasonController = TextEditingController();
-
   String? _selectedLeaveType;
   DateTime? _startDate;
   DateTime? _endDate;
   bool _isLoading = false;
 
-  final List<String> _leaveTypes = ['Vacation', 'Sick Leave', 'Emergency', 'Maternity/Paternity'];
-
-  @override
-  void dispose() {
-    _startDateController.dispose();
-    _endDateController.dispose();
-    _reasonController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _selectDate(BuildContext context, bool isStartDate) async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now().subtract(const Duration(days: 30)),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-    );
-
-    if (picked != null) {
-      setState(() {
-        if (isStartDate) {
-          _startDate = picked;
-          _startDateController.text = DateFormat('MMMM dd, yyyy').format(picked);
-        } else {
-          _endDate = picked;
-          _endDateController.text = DateFormat('MMMM dd, yyyy').format(picked);
-        }
-      });
-    }
-  }
-
   Future<void> _submitLeaveRequest() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _isLoading = true);
-
     try {
       final user = FirebaseAuth.instance.currentUser;
-      if (user == null) throw Exception('User not logged in.');
-
-      await FirebaseFirestore.instance
-          .collection('employees')
-          .doc(user.uid)
-          .collection('leaves')
-          .add({
+      await FirebaseFirestore.instance.collection('employees').doc(user!.uid).collection('leaves').add({
         'type': _selectedLeaveType,
         'startDate': _startDate,
         'endDate': _endDate,
@@ -599,139 +256,107 @@ class _ApplyLeaveFormState extends State<_ApplyLeaveForm> {
         'status': 'Pending',
         'filedDate': FieldValue.serverTimestamp(),
       });
-
-      if (mounted) {
-        Navigator.pop(context); // Close the bottom sheet
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Leave request submitted successfully!'), backgroundColor: Colors.green),
-        );
-      }
+      if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to submit request: $e'), backgroundColor: Colors.red),
-        );
-      }
+      debugPrint('Submit Error: $e');
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      // Accommodate for the keyboard
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
-        padding: const EdgeInsets.all(25),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.only(
-            topLeft: Radius.circular(25),
-            topRight: Radius.circular(25),
-          ),
-        ),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('File a Leave',
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E293B))),
-              const SizedBox(height: 20),
-              DropdownButtonFormField<String>(
-                decoration: InputDecoration(
-                  labelText: 'Leave Type',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none),
-                  filled: true,
-                  fillColor: Colors.grey[100],
+        padding: const EdgeInsets.fromLTRB(25, 12, 25, 25),
+        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        child: SingleChildScrollView(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+                const Text('File a Leave', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  isDense: true,
+                  decoration: _inputDecoration('Leave Type'),
+                  items: ['Vacation', 'Sick Leave', 'Emergency', 'Maternity/Paternity'].map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                  onChanged: (v) => setState(() => _selectedLeaveType = v),
+                  validator: (v) => v == null ? 'Required' : null,
                 ),
-                initialValue: _selectedLeaveType,
-                items: _leaveTypes.map((type) => DropdownMenuItem(value: type, child: Text(type))).toList(),
-                onChanged: (value) => setState(() => _selectedLeaveType = value),
-                validator: (value) => value == null ? 'Please select a leave type' : null,
-              ),
-              const SizedBox(height: 15),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _startDateController,
-                      decoration: InputDecoration(
-                          labelText: 'Start Date',
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none),
-                          filled: true,
-                          fillColor: Colors.grey[100],
-                          suffixIcon:
-                              const Icon(Icons.calendar_today, size: 18)),
-                      readOnly: true,
-                      onTap: () => _selectDate(context, true),
-                      validator: (value) => value == null || value.isEmpty ? 'Select a start date' : null,
-                    ),
-                  ),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(child: TextFormField(controller: _startDateController, readOnly: true, onTap: () => _selectDate(true), decoration: _inputDecoration('Start'), validator: (v) => v!.isEmpty ? 'Required' : null)),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _endDateController,
-                      decoration: InputDecoration(
-                          labelText: 'End Date',
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none),
-                          filled: true,
-                          fillColor: Colors.grey[100],
-                          suffixIcon:
-                              const Icon(Icons.calendar_today, size: 18)),
-                      readOnly: true,
-                      onTap: () => _selectDate(context, false),
-                      validator: (value) => value == null || value.isEmpty ? 'Select an end date' : null,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 15),
-              TextFormField(
-                controller: _reasonController,
-                decoration: InputDecoration(
-                  labelText: 'Reason (Optional)',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none),
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                ),
-                maxLines: 3,
-              ),
-              const SizedBox(height: 25),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
+                  Expanded(child: TextFormField(controller: _endDateController, readOnly: true, onTap: () => _selectDate(false), decoration: _inputDecoration('End'), validator: (v) => v!.isEmpty ? 'Required' : null)),
+                ]),
+                const SizedBox(height: 12),
+                TextFormField(controller: _reasonController, maxLines: 2, decoration: _inputDecoration('Reason (Optional)')),
+                const SizedBox(height: 24),
+                SizedBox(width: double.infinity, child: ElevatedButton(
                   onPressed: _isLoading ? null : _submitLeaveRequest,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF4F46E5),
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: _isLoading
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
-                      : const Text('Submit Request', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ],
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4F46E5), padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
+                  child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('Submit Request', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                )),
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  InputDecoration _inputDecoration(String label) => InputDecoration(labelText: label, isDense: true, filled: true, fillColor: Colors.grey[100], contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none));
+
+  Future<void> _selectDate(bool isStart) async {
+    final picked = await showDatePicker(
+      context: context, 
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 30)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) {
+      setState(() {
+        if (isStart) {
+          _startDate = picked;
+          _startDateController.text = DateFormat('MMM dd, yyyy').format(picked);
+        } else {
+          _endDate = picked;
+          _endDateController.text = DateFormat('MMM dd, yyyy').format(picked);
+        }
+      });
+    }
+  }
+}
+
+// --- PICKER DIALOGS ---
+
+class _YearPickerDialog extends StatelessWidget {
+  final int initialYear;
+  const _YearPickerDialog({required this.initialYear});
+  @override
+  Widget build(BuildContext context) {
+    final years = List.generate(6, (i) => DateTime.now().year - 5 + i).reversed.toList();
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      title: const Text('Select Year'),
+      content: SizedBox(width: 100, height: 250, child: ListView.builder(itemCount: years.length, itemBuilder: (c, i) => ListTile(title: Text(years[i].toString()), onTap: () => Navigator.pop(c, years[i])))),
+    );
+  }
+}
+
+class _MonthPickerDialog extends StatelessWidget {
+  final int initialMonth;
+  const _MonthPickerDialog({required this.initialMonth});
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      title: const Text('Select Month'),
+      content: SizedBox(width: 100, height: 350, child: ListView.builder(itemCount: 12, itemBuilder: (c, i) => ListTile(title: Text(DateFormat('MMMM').format(DateTime(0, i + 1))), onTap: () => Navigator.pop(c, i + 1)))),
     );
   }
 }

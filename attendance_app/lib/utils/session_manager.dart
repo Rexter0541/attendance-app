@@ -1,8 +1,11 @@
+// ignore_for_file: prefer_single_quotes
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../pages/login_page.dart'; 
+import '../main.dart'; 
 
 class SessionManager extends StatefulWidget {
   final Widget child;
@@ -11,100 +14,128 @@ class SessionManager extends StatefulWidget {
   const SessionManager({
     super.key,
     required this.child,
-    this.timeout = const Duration(minutes: 30),
+    this.timeout = const Duration(minutes: 10), // Default to 10 minutes if not provided
   });
 
   @override
   State<SessionManager> createState() => _SessionManagerState();
 }
 
-// 1. Add WidgetsBindingObserver to listen for app background/foreground events
 class _SessionManagerState extends State<SessionManager> with WidgetsBindingObserver {
   Timer? _timer;
-  DateTime _lastActivity = DateTime.now();
+  bool _isDialogShowing = false;
 
   @override
   void initState() {
     super.initState();
-    // 2. Register the observer
     WidgetsBinding.instance.addObserver(this);
-    _startTimer();
+    
+    // 1. REMOVED: _checkPersistenceOnStart() from here.
+    // We don't want to check the OLD timestamp from the previous session 
+    // immediately upon startup.
+    
+    _resetTimer(); // Start a FRESH timer for the current session
+  }
+
+  // This now only saves the time; it doesn't trigger the logout logic
+  Future<void> _saveTimestamp() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('last_action_timestamp', DateTime.now().millisecondsSinceEpoch);
   }
 
   @override
   void dispose() {
-    // 3. Unregister the observer
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     super.dispose();
   }
 
-  // 4. Handle App Lifecycle (Background to Foreground)
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _checkInactivityOnResume();
-    }
-  }
-
-  void _checkInactivityOnResume() {
-    final diff = DateTime.now().difference(_lastActivity);
-    if (diff >= widget.timeout) {
-      // User was away longer than the timeout
-      _handleAutoLogout();
-    } else {
-      // User returned within the time limit, restart timer with remaining time
-      _startTimer();
+      // When they come back, we reset the timer based on the MOMENT they returned,
+      // not based on when they left.
+      _resetTimer(); 
+    } else if (state == AppLifecycleState.paused) {
+      _timer?.cancel();
     }
   }
 
   void _startTimer() {
     _timer?.cancel();
-    _lastActivity = DateTime.now(); // Update the timestamp
-    _timer = Timer(widget.timeout, _handleAutoLogout);
+    // We do NOT save the timestamp to SharedPreferences here 
+    // because that's for cross-session persistence. 
+    // We just want an in-memory timer for active movement.
+    _timer = Timer(widget.timeout, () {
+      _showInactivityDialog();
+    });
   }
 
   void _resetTimer() {
-    // Only reset if we are logged in (avoids timer running on Login/Splash)
-    if (FirebaseAuth.instance.currentUser != null) {
+    if (!_isDialogShowing) {
       _startTimer();
+      _saveTimestamp(); // Keep SharedPreferences updated for other checks
     }
+  }
+
+  void _showInactivityDialog() async {
+    final auth = FirebaseAuth.instance;
+    // Only show if user is actually logged in and dialog isn't already up
+    if (auth.currentUser == null || _isDialogShowing) return;
+
+    _isDialogShowing = true;
+    final context = navigatorKey.currentContext;
+    if (context == null) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Session Inactive', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: const Text('You have been inactive for a while. You will be logged out for security.'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _handleAutoLogout();
+              },
+              child: const Text('OK', style: TextStyle(color: Color(0xFF4F46E5))),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _handleAutoLogout() async {
     try {
       final FirebaseAuth auth = FirebaseAuth.instance;
-      if (auth.currentUser == null) return;
-
       final SharedPreferences prefs = await SharedPreferences.getInstance();
+      
       await prefs.setBool('isLoggedIn', false);
       await prefs.remove('userId');
       await prefs.remove('userName');
-
+      await prefs.remove('last_action_timestamp');
       await auth.signOut();
 
-      if (!mounted) return;
+      _isDialogShowing = false;
 
-      Navigator.of(context).pushAndRemoveUntil(
+      navigatorKey.currentState?.pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginPage()),
         (route) => false,
       );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Logged out due to 30 minutes of inactivity'),
-          backgroundColor: Color(0xFF1E293B),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
     } catch (e) {
       debugPrint('Session Manager Error: $e');
+      _isDialogShowing = false;
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Listener(
+      // This is the "Movement/Interaction" trigger
       onPointerDown: (_) => _resetTimer(),
       behavior: HitTestBehavior.translucent, 
       child: widget.child,

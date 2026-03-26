@@ -638,20 +638,31 @@ await showDialog(
             Icon(icon, size: 22, color: ProfilePage.textColor),
             const SizedBox(width: 15),
             Expanded(
-                child: Text(title,
-                    style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
-                        color: ProfilePage.textColor))),
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                  color: ProfilePage.textColor,
+                ),
+              ),
+            ),
             if (trailing != null)
-              Text(trailing,
-                  style: const TextStyle(
-                      fontSize: 13,
-                      color: ProfilePage.primaryColor,
-                      fontWeight: FontWeight.bold)),
+              Text(
+                trailing,
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: ProfilePage.primaryColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             const SizedBox(width: 5),
-            Icon(Icons.arrow_forward_ios,
-                size: 14, color: Colors.black26),
+            // Added 'const' here to fix the diagnostic error
+            const Icon(
+              Icons.arrow_forward_ios,
+              size: 14,
+              color: Colors.black26,
+            ),
           ],
         ),
       ),

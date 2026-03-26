@@ -79,8 +79,8 @@ class _AdminAttendancePageState extends State<AdminAttendancePage> {
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(32), 
-          bottomRight: Radius.circular(32)
+            bottomLeft: Radius.circular(32), 
+            bottomRight: Radius.circular(32)
         ),
         boxShadow: [BoxShadow(color: Color(0x08000000), blurRadius: 20, offset: Offset(0, 10))],
       ),
@@ -165,7 +165,6 @@ class _AdminAttendancePageState extends State<AdminAttendancePage> {
                 final empData = employees[index].data() as Map<String, dynamic>;
                 final name = empData['name'] ?? 'Unknown';
                 
-                // Match logic
                 final logMatch = attendanceLogs.where((log) => 
                   (log.data() as Map<String, dynamic>)['employeeName'] == name).toList();
                 
@@ -181,14 +180,17 @@ class _AdminAttendancePageState extends State<AdminAttendancePage> {
   }
 
   Widget _buildInteractiveCard(String name, Map<String, dynamic>? log) {
-    final DateTime? timeIn = (log?['timeIn'] as Timestamp?)?.toDate();
+    final dynamic timeInData = log?['timeIn'];
+    final DateTime? timeIn = (timeInData is Timestamp) ? timeInData.toDate() : null;
     final String? photoUrl = log?['verification_photo'];
     
+    // ⭐ Key from Firestore: deviceUsed
+    final String deviceUsed = log?['deviceUsed'] ?? 'Unknown Device';
+
     bool isPresent = log != null;
     bool isLate = false;
     
     if (isPresent && timeIn != null) {
-      // Logic: Late if after 8:01 AM
       final lateThreshold = DateTime(timeIn.year, timeIn.month, timeIn.day, 8, 1);
       isLate = timeIn.isAfter(lateThreshold);
     }
@@ -207,26 +209,66 @@ class _AdminAttendancePageState extends State<AdminAttendancePage> {
       child: Row(
         children: [
           _buildAvatar(name, isAbsent, photoUrl),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF1E293B))),
+                Text(
+                  name, 
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF1E293B)),
+                  overflow: TextOverflow.ellipsis,
+                ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
                     Icon(Icons.access_time_filled_rounded, size: 14, color: isAbsent ? Colors.redAccent : const Color(0xFF94A3B8)),
                     const SizedBox(width: 4),
-                    Text(
-                      isPresent ? DateFormat('hh:mm a').format(timeIn!) : 'Unrecorded',
-                      style: TextStyle(color: isAbsent ? Colors.redAccent : const Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500),
+                    Expanded(
+                      child: Text(
+                        isPresent 
+                          ? (timeIn != null ? DateFormat('hh:mm a').format(timeIn) : 'Verified (Waiting In)')
+                          : 'Unrecorded',
+                        style: TextStyle(color: isAbsent ? Colors.redAccent : const Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ],
                 ),
+                if (isPresent) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.phone_android_rounded, size: 12, color: Color(0xFF64748B)),
+                        const SizedBox(width: 4),
+                        // ⭐ Flexible prevents the device name from overflowing the card
+                        Flexible(
+                          child: Text(
+                            deviceUsed,
+                            style: const TextStyle(
+                              color: Color(0xFF475569), 
+                              fontSize: 11, 
+                              fontWeight: FontWeight.w600
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
+          const SizedBox(width: 8),
           _indicatorGroup(isPresent && !isLate, isLate, isAbsent),
         ],
       ),
@@ -250,17 +292,6 @@ class _AdminAttendancePageState extends State<AdminAttendancePage> {
             ? Image.network(
                 photoUrl,
                 fit: BoxFit.cover,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Center(
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      value: loadingProgress.expectedTotalBytes != null
-                          ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                          : null,
-                    ),
-                  );
-                },
                 errorBuilder: (context, error, stackTrace) => _buildLetterFallback(name, isAbsent),
               )
             : _buildLetterFallback(name, isAbsent),

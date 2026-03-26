@@ -2,10 +2,10 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // ⭐ Added
+import 'package:shared_preferences/shared_preferences.dart';
 import '../pages/login_page.dart';
-import '../pages/home_page.dart';   // ⭐ Added
-import '../models/employee.dart';  // ⭐ Added
+import '../pages/home_page.dart';
+import '../models/employee.dart';
 
 class SplashAnim extends StatefulWidget {
   const SplashAnim({super.key});
@@ -20,11 +20,10 @@ class _SplashAnimState extends State<SplashAnim> with TickerProviderStateMixin {
   late Animation<Offset> _logoSlide;
   late Animation<double> _textOpacity;
 
-  // 🎨 OFFICIAL LGU PALETTE
-  static const Color kPrimaryText = Color(0xFF1E293B);   
-  static const Color kAccentColor = Color(0xFF4F46E5);   
-  static const Color kBgTop = Color(0xFFF8FAFC);         
-  static const Color kBgBottom = Color(0xFFEEF2FF);     
+  static const Color kPrimaryText = Color(0xFF1E293B);
+  static const Color kAccentColor = Color(0xFF4F46E5);
+  static const Color kBgTop = Color(0xFFF8FAFC);
+  static const Color kBgBottom = Color(0xFFEEF2FF);
 
   @override
   void initState() {
@@ -51,14 +50,11 @@ class _SplashAnimState extends State<SplashAnim> with TickerProviderStateMixin {
     _runNavigation();
   }
 
-  // =====================================================
-  // ⚡ CUSTOM SMOOTH TRANSITION ROUTE
-  // =====================================================
   Route _createRoute(Widget page) {
     return PageRouteBuilder(
       pageBuilder: (context, animation, secondaryAnimation) => page,
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        const begin = Offset(0.0, 0.05); 
+        const begin = Offset(0.0, 0.05);
         const end = Offset.zero;
         const curve = Curves.easeOutCubic;
 
@@ -73,33 +69,52 @@ class _SplashAnimState extends State<SplashAnim> with TickerProviderStateMixin {
           ),
         );
       },
-      transitionDuration: const Duration(milliseconds: 800), 
+      transitionDuration: const Duration(milliseconds: 800),
     );
   }
 
- // =====================================================
-  // 🧭 UPDATED NAVIGATION LOGIC (WITH MOUNTED CHECKS)
+  // =====================================================
+  // 🧭 CRITICAL UPDATE: Navigation Logic
   // =====================================================
   Future<void> _runNavigation() async {
-    // Wait for splash animation to feel substantial
+    // 1. Instantly check SharedPreferences before the animation delay
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    
+    final int? lastTimestamp = prefs.getInt('last_action_timestamp');
+    bool sessionExpired = false;
+
+    if (lastTimestamp != null) {
+      final lastAction = DateTime.fromMillisecondsSinceEpoch(lastTimestamp);
+      final difference = DateTime.now().difference(lastAction);
+      
+      // If time has passed (using your 5s test duration)
+      if (difference >= const Duration(seconds: 5)) { 
+        sessionExpired = true;
+      }
+    }
+
+    // 2. Clear state IMMEDIATELY if expired
+    if (sessionExpired) {
+      await prefs.setBool('isLoggedIn', false);
+      await prefs.remove('userId');
+      await prefs.remove('userName');
+      await prefs.remove('last_action_timestamp');
+    }
+
+    // 3. Now wait for the splash delay
     await Future.delayed(const Duration(seconds: 4));
     
-    // ⭐ FIX 1: Check mounted after the delay
     if (!mounted) return;
 
-    // Check SharedPreferences for existing session
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    // 4. Final Decision
+    // We re-check the key. If we cleared it in Step 2, this will be false.
     final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
 
-    // ⭐ FIX 2: Check mounted again after getting SharedPreferences
-    if (!mounted) return;
-
-    if (isLoggedIn) {
+    if (isLoggedIn && !sessionExpired) {
       final String? savedId = prefs.getString('userId');
       final String? savedName = prefs.getString('userName');
 
       if (savedId != null && savedName != null) {
-        // Redirect to Home directly if session exists
         Navigator.of(context).pushReplacement(
           _createRoute(HomePage(
             employee: Employee(id: savedId, name: savedName),
@@ -109,11 +124,16 @@ class _SplashAnimState extends State<SplashAnim> with TickerProviderStateMixin {
       }
     }
 
-    // Default: Go to Login Page
-    Navigator.of(context).pushReplacement(
-      _createRoute(const LoginPage()),
-    );
+    // 5. Force Login
+    Navigator.of(context).pushReplacement(_createRoute(const LoginPage()));
   }
+
+  @override
+  void dispose() {
+    _mainController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -142,7 +162,7 @@ class _SplashAnimState extends State<SplashAnim> with TickerProviderStateMixin {
               child: Column(
                 children: [
                   const Text(
-                    "ATTENDANCE APP",
+                    'ATTENDANCE APP',
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
