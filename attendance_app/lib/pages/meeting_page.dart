@@ -18,7 +18,6 @@ class MeetingPage extends StatefulWidget {
 
 class _MeetingPageState extends State<MeetingPage> {
   final TextEditingController _roomController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final Color primaryColor = const Color(0xFF4F46E5);
 
@@ -40,13 +39,11 @@ class _MeetingPageState extends State<MeetingPage> {
     return '$part1-$part2-$part3';
   }
 
-  void _startOrJoinMeeting() async {
+  void _handleMeetingAction({required bool isCreating}) async {
     try {
       String roomCode = _roomController.text.trim().toLowerCase();
-      String password = _passwordController.text.trim();
       
-      // Kung walang code na nilagay, automatic na "Create" mode tayo
-      if (roomCode.isEmpty) {
+      if (isCreating) {
         setState(() => _isGeneratingCode = true);
         roomCode = _generateMeetingCode();
         _roomController.text = roomCode;
@@ -56,9 +53,15 @@ class _MeetingPageState extends State<MeetingPage> {
           'hostId': widget.employee.id,
           'hostName': widget.employee.name,
           'createdAt': FieldValue.serverTimestamp(),
-          'password': password,
         });
         setState(() => _isGeneratingCode = false);
+      } else {
+        if (roomCode.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please enter a meeting code to join.'), backgroundColor: Colors.orange),
+          );
+          return;
+        }
       }
 
       String finalRoomName = "LGU_Meet_$roomCode";
@@ -85,7 +88,6 @@ class _MeetingPageState extends State<MeetingPage> {
         configOverrides: {
           'startWithAudioMuted': true,
           'startWithVideoMuted': true,
-          if (password.isNotEmpty) 'password': password,
         },
         userInfo: JitsiMeetUserInfo(
           displayName: widget.employee.name, // Feature 3: Auth Tie-in
@@ -188,7 +190,7 @@ class _MeetingPageState extends State<MeetingPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  _isGeneratingCode ? 'Generating unique code...' : 'Mag-create ng bagong meeting o mag-join gamit ang code.',
+                  _isGeneratingCode ? 'Generating unique code...' : 'Enter a meeting code to join or create a new one.',
                   textAlign: TextAlign.center,
                   style: const TextStyle(color: Colors.grey),
                 ),
@@ -211,38 +213,42 @@ class _MeetingPageState extends State<MeetingPage> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _passwordController,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    hintText: 'Meeting Password (Optional)',
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                    prefixIcon: Icon(Icons.lock_outline, color: primaryColor),
-                  ),
-                ),
                 const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    onPressed: _startOrJoinMeeting,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 5,
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 55,
+                        child: ElevatedButton(
+                          onPressed: () => _handleMeetingAction(isCreating: true),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: primaryColor,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 4,
+                          ),
+                          child: const Text('Create', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
                     ),
-                    child: const Text(
-                      'Start or Join Meeting',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 55,
+                        child: ElevatedButton(
+                          onPressed: () => _handleMeetingAction(isCreating: false),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: primaryColor,
+                            side: BorderSide(color: primaryColor, width: 2),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            elevation: 0,
+                          ),
+                          child: const Text('Join', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),
