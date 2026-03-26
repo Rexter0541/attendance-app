@@ -40,12 +40,13 @@ class _MeetingPageState extends State<MeetingPage> {
     return '$part1-$part2-$part3';
   }
 
-  void _startOrJoinMeeting({required bool isCreating}) async {
+  void _startOrJoinMeeting() async {
     try {
       String roomCode = _roomController.text.trim().toLowerCase();
       String password = _passwordController.text.trim();
       
-      if (isCreating) {
+      // Kung walang code na nilagay, automatic na "Create" mode tayo
+      if (roomCode.isEmpty) {
         setState(() => _isGeneratingCode = true);
         roomCode = _generateMeetingCode();
         _roomController.text = roomCode;
@@ -58,13 +59,6 @@ class _MeetingPageState extends State<MeetingPage> {
           'password': password,
         });
         setState(() => _isGeneratingCode = false);
-      }
-
-      if (roomCode.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Mangyaring maglagay ng Meeting Code')),
-        );
-        return;
       }
 
       String finalRoomName = "LGU_Meet_$roomCode";
@@ -233,38 +227,22 @@ class _MeetingPageState extends State<MeetingPage> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => _startOrJoinMeeting(isCreating: true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryColor,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          elevation: 5,
-                        ),
-                        child: const Text('Create Meeting', style: TextStyle(fontSize: 16)),
-                      ),
+                SizedBox(
+                  width: double.infinity,
+                  height: 55,
+                  child: ElevatedButton(
+                    onPressed: _startOrJoinMeeting,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      elevation: 5,
                     ),
-                    const SizedBox(width: 12), // Space between buttons
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => _startOrJoinMeeting(isCreating: false),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: primaryColor,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          elevation: 5,
-                        ),
-                        child: const Text(
-                          'Join Meeting',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                      ),
+                    child: const Text(
+                      'Start or Join Meeting',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),
