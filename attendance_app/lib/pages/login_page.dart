@@ -26,11 +26,6 @@ class _LoginPageState extends State<LoginPage> {
   bool _isLoading = false;
   bool _obscurePassword = true;
 
-  static const Color backgroundColor = Color(0xFFF8FAFC);
-
-  // =====================================================
-  // YOUR ORIGINAL DEVICE INFO LOGIC
-  // =====================================================
   Future<String> _getDeviceName() async {
     DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
     try {
@@ -50,9 +45,6 @@ class _LoginPageState extends State<LoginPage> {
     return 'Generic Device';
   }
 
-  // =====================================================
-  // LOGIN FUNCTION (FIXED & FULL)
-  // =====================================================
   Future<void> login() async {
     if (userController.text.isEmpty || passController.text.isEmpty) {
       _showError('Please fill in all fields');
@@ -62,8 +54,7 @@ class _LoginPageState extends State<LoginPage> {
     setState(() => _isLoading = true);
 
     try {
-      UserCredential credential =
-          await FirebaseAuth.instance.signInWithEmailAndPassword(
+      UserCredential credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: userController.text.trim(),
         password: passController.text.trim(),
       );
@@ -71,18 +62,12 @@ class _LoginPageState extends State<LoginPage> {
       String uid = credential.user!.uid;
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      // Capture hardware name and save to local session
       String deviceName = await _getDeviceName();
       await prefs.setString('deviceName', deviceName);
-
-      // ⭐ THE FIX: Force the timestamp to NOW before navigating
       await prefs.setInt('last_action_timestamp', DateTime.now().millisecondsSinceEpoch);
 
-      // 1. Check Admin Collection
-      DocumentSnapshot adminDoc = await FirebaseFirestore.instance
-          .collection('Admin')
-          .doc(uid)
-          .get();
+      // Check Admin
+      DocumentSnapshot adminDoc = await FirebaseFirestore.instance.collection('Admin').doc(uid).get();
 
       if (adminDoc.exists) {
         await prefs.setBool('isLoggedIn', true);
@@ -95,11 +80,8 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      // 2. Check Employees Collection
-      DocumentSnapshot employeeDoc = await FirebaseFirestore.instance
-          .collection('employees')
-          .doc(uid)
-          .get();
+      // Check Employees
+      DocumentSnapshot employeeDoc = await FirebaseFirestore.instance.collection('employees').doc(uid).get();
 
       if (employeeDoc.exists) {
         String name = employeeDoc.get('name') ?? 'Employee';
@@ -117,13 +99,11 @@ class _LoginPageState extends State<LoginPage> {
         if (role == 'admin') {
           Navigator.pushReplacementNamed(context, '/admin');
         } else {
-          // Keep your original FadeTransition logic
           Navigator.pushReplacement(
             context,
             PageRouteBuilder(
               pageBuilder: (_, __, ___) => VerificationPage(employee: employee),
-              transitionsBuilder: (context, anim, secAnim, child) =>
-                  FadeTransition(opacity: anim, child: child),
+              transitionsBuilder: (context, anim, secAnim, child) => FadeTransition(opacity: anim, child: child),
             ),
           );
         }
@@ -173,7 +153,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: backgroundColor,
+      backgroundColor: const Color(0xFFF8FAFC),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 30),
@@ -196,15 +176,17 @@ class _LoginPageState extends State<LoginPage> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(24),
-                  boxShadow: [BoxShadow(color: Colors.black.withAlpha(28), blurRadius: 20, offset: const Offset(0, 10))],
+                  boxShadow: [BoxShadow(color: Colors.black.withAlpha(20), blurRadius: 20, offset: const Offset(0, 10))],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildLabel('Email'),
+                    const SizedBox(height: 8),
                     _buildTextField(controller: userController, hint: 'Enter email', icon: Icons.person_outline_rounded),
                     const SizedBox(height: 20),
                     _buildLabel('Password'),
+                    const SizedBox(height: 8),
                     _buildTextField(
                       controller: passController,
                       hint: '••••••••',
@@ -249,7 +231,11 @@ class _LoginPageState extends State<LoginPage> {
       builder: (context, value, child) => Transform.scale(scale: value, child: child),
       child: Container(
         padding: const EdgeInsets.all(15),
-        decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: const Color(0xFF1E293B).withAlpha(13), blurRadius: 25, offset: const Offset(0, 10))]),
+        decoration: BoxDecoration(
+          color: Colors.white, 
+          shape: BoxShape.circle, 
+          boxShadow: [BoxShadow(color: const Color(0xFF1E293B).withAlpha(13), blurRadius: 25, offset: const Offset(0, 10))]
+        ),
         child: Image.asset('assets/icon/app_icon.png', width: 80, errorBuilder: (c, e, s) => const Icon(Icons.business, size: 50)),
       ),
     );

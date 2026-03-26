@@ -27,7 +27,6 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
   late Stream<QuerySnapshot> _attendanceStream;
 
   // UI Constants (Modern Design System)
-  static const Color bgColor = Color(0xFFF8F9FC);
   static const Color primaryColor = Color(0xFF4F46E5);
   static const Color cardColor = Colors.white;
   static const Color textColor = Color(0xFF1E293B);
@@ -39,12 +38,9 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
     _selectedYear = now.year;
     _selectedMonth = now.month;
     
-    // ✅ 2. Initialize the stream once during setup
-    // DO NOT call setState in initState. Just set the variable directly or via a method that allows bypassing setState.
     _updateStream(initialize: true);
   }
 
-  /// Updates the stream variable. Call this whenever filters change.
   void _updateStream({bool initialize = false}) {
     final firstDay = DateTime(_selectedYear, _selectedMonth, 1);
     final lastDay = (_selectedMonth < 12)
@@ -96,7 +92,7 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: bgColor,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -112,45 +108,103 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
           style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18),
         ),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 10),
-              _buildEmployeeCard(),
-              const SizedBox(height: 20),
-              _buildFilters(),
-              const SizedBox(height: 20),
-
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: _attendanceStream,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator(color: primaryColor));
-                    }
-
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return _buildEmptyState();
-                    }
-
-                    return ListView.separated(
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: snapshot.data!.docs.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final data = snapshot.data!.docs[index].data() as Map<String, dynamic>;
-                        return _buildAttendanceCard(data);
-                      },
-                    );
-                  },
-                ),
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFF8F9FC),
+                  Color(0xFFE0E7FF),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          // Top Right Glow - Updated to .withValues()
+          Positioned(
+            top: -100,
+            right: -50,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primaryColor.withValues(alpha: 0.08),
+                boxShadow: [
+                  BoxShadow(
+                    color: primaryColor.withValues(alpha: 0.08),
+                    blurRadius: 100,
+                    spreadRadius: 40,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Bottom Left Glow - Updated to .withValues()
+          Positioned(
+            bottom: 50,
+            left: -50,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF818CF8).withValues(alpha: 0.08),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF818CF8).withValues(alpha: 0.08),
+                    blurRadius: 80,
+                    spreadRadius: 30,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 10),
+                  _buildEmployeeCard(),
+                  const SizedBox(height: 15),
+                  _buildFilters(),
+                  const SizedBox(height: 15),
+
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: _attendanceStream,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator(color: primaryColor));
+                        }
+
+                        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                          return _buildEmptyState();
+                        }
+
+                        return ListView.separated(
+                          physics: const BouncingScrollPhysics(),
+                          itemCount: snapshot.data!.docs.length,
+                          separatorBuilder: (context, index) => const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final data = snapshot.data!.docs[index].data() as Map<String, dynamic>;
+                            return _buildAttendanceCard(data);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -168,14 +222,13 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
     final String timeOut = data['timeOut'] != null
         ? DateFormat('h:mm a').format((data['timeOut'] as Timestamp).toDate())
         : '--';
+    final bool isAutoTimeout = data['status'] == 'Auto-Logged Out (Max OT)';
 
-    // Logic para sa Status (Late vs On Time)
     String status = '--';
     Color itemStatusColor = Colors.grey;
 
     if (data['timeIn'] != null) {
       final DateTime dt = (data['timeIn'] as Timestamp).toDate();
-      // Set 8:00 AM as the official start time
       final DateTime officialStart = DateTime(dt.year, dt.month, dt.day, 8, 0);
 
       if (dt.isAfter(officialStart)) {
@@ -202,7 +255,6 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
       ),
       child: Row(
         children: [
-          // Date Box
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
@@ -212,19 +264,18 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
             child: Column(
               children: [
                 Text(
-                  date.split(' ')[1], // Day
+                  date.contains(' ') ? date.split(' ')[1] : '--',
                   style: const TextStyle(
                       fontWeight: FontWeight.bold, fontSize: 18, color: primaryColor),
                 ),
                 Text(
-                  date.split(' ')[0], // Month
+                  date.contains(' ') ? date.split(' ')[0] : date,
                   style: const TextStyle(fontSize: 12, color: primaryColor),
                 ),
               ],
             ),
           ),
           const SizedBox(width: 16),
-          // Details
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -243,12 +294,19 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
                       style: TextStyle(
                           color: itemStatusColor, fontWeight: FontWeight.bold, fontSize: 12),
                     ),
+                    if (isAutoTimeout) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(4)),
+                        child: const Text('AUTO-TIMEOUT', style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
                   ],
                 )
               ],
             ),
           ),
-          // Times
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -374,9 +432,6 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
   }
 }
 
-/// Year Picker Dialog
-// --- Supporting Widgets (Dialogs & Text Styles) ---
-
 class _YearPickerDialog extends StatelessWidget {
   final int initialYear;
   const _YearPickerDialog({required this.initialYear});
@@ -399,7 +454,7 @@ class _YearPickerDialog extends StatelessWidget {
             return ListTile(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               selected: year == initialYear,
-              selectedTileColor: _AttendanceLogPageState.primaryColor.withAlpha(26),
+              selectedTileColor: _AttendanceLogPageState.primaryColor.withValues(alpha: 0.1),
               title: Text(year.toString(),
                   style: TextStyle(
                     fontWeight: year == initialYear ? FontWeight.bold : FontWeight.normal,
@@ -414,7 +469,6 @@ class _YearPickerDialog extends StatelessWidget {
   }
 }
 
-/// Month Picker Dialog
 class _MonthPickerDialog extends StatelessWidget {
   final int initialMonth;
   const _MonthPickerDialog({required this.initialMonth});
@@ -435,7 +489,7 @@ class _MonthPickerDialog extends StatelessWidget {
             return ListTile(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               selected: month == initialMonth,
-              selectedTileColor: _AttendanceLogPageState.primaryColor.withAlpha(26),
+              selectedTileColor: _AttendanceLogPageState.primaryColor.withValues(alpha: 0.1),
               title: Text(monthName,
                   style: TextStyle(
                       fontWeight: month == initialMonth ? FontWeight.bold : FontWeight.normal,

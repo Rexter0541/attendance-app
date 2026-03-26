@@ -31,7 +31,7 @@ class _TimeInPageState extends State<TimeInPage> {
   void initState() {
     super.initState();
     // 1. Start the digital clock
-    timer = Timer.periodic(const Duration(seconds: 1), (_) {
+    timer = Timer.periodic(const Duration(milliseconds: 30), (_) {
       if (mounted) setState(() => now = DateTime.now());
     });
 
@@ -47,7 +47,7 @@ class _TimeInPageState extends State<TimeInPage> {
   }
 
   // =====================================================
-  // INITIALIZE SESSION (FIX FOR BLANK TIMES ON RESTART)
+  // INITIALIZE SESSION
   // =====================================================
   Future<void> _initAttendanceSession() async {
     if (widget.employee.attendanceId != null) {
@@ -135,14 +135,14 @@ class _TimeInPageState extends State<TimeInPage> {
       'timestamp': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    final now = DateTime.now();
-    final officialStart = DateTime(now.year, now.month, now.day, 8, 15);
-    final isLate = now.isAfter(officialStart);
+    final nowTime = DateTime.now();
+    final officialStart = DateTime(nowTime.year, nowTime.month, nowTime.day, 8, 15);
+    final isLate = nowTime.isAfter(officialStart);
 
     final title = isLate ? 'You are Late' : 'Time-In Successful';
     final body = isLate
-        ? 'You clocked in at ${DateFormat('h:mm a').format(now)}. Please be mindful of your schedule.'
-        : 'You clocked in at ${DateFormat('h:mm a').format(now)}. Have a productive day!';
+        ? 'You clocked in at ${DateFormat('h:mm a').format(nowTime)}. Please pay attention to the time next time.'
+        : 'You clocked in at ${DateFormat('h:mm a').format(nowTime)}. Have a productive day!';
     final type = isLate ? 'attendance_late' : 'attendance_present';
 
     await FirebaseFirestore.instance.collection('notifications').add({
@@ -157,6 +157,23 @@ class _TimeInPageState extends State<TimeInPage> {
     _addLog('Clock in recorded successfully ✅');
     _listenAttendance(docRef.id);
     setState(() => isProcessing = false);
+
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: Row(children: [
+            Icon(isLate ? Icons.warning_amber_rounded : Icons.check_circle_outline, 
+                 color: isLate ? Colors.orange : Colors.green),
+            const SizedBox(width: 10),
+            Text(isLate ? 'Late Warning' : 'Success', style: const TextStyle(fontWeight: FontWeight.bold)),
+          ]),
+          content: Text(body),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Okay'))],
+        ),
+      );
+    }
   }
 
   // =====================================================
@@ -252,7 +269,6 @@ class _TimeInPageState extends State<TimeInPage> {
     );
   }
 
-  // Helper to redirect back to home properly
   void _navigateToHome() {
     Navigator.pushReplacement(
       context,
@@ -269,12 +285,11 @@ class _TimeInPageState extends State<TimeInPage> {
       );
     }
 
-    // Wrap with PopScope to prevent black screen on system back button
     return PopScope(
-      canPop: false, // Prevent default pop
+      canPop: false, 
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        _navigateToHome(); // Redirect to Home instead
+        _navigateToHome(); 
       },
       child: Scaffold(
         backgroundColor: const Color(0xFFF8F9FC),
@@ -283,19 +298,67 @@ class _TimeInPageState extends State<TimeInPage> {
           elevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF1E293B)),
-            onPressed: _navigateToHome, // Updated to use Home navigation
+            onPressed: _navigateToHome,
           ),
           title: const Text('Attendance Check-In',
               style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold)),
           centerTitle: true,
         ),
-        body: Center(
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: _buildCard(),
+        body: Stack( // Replaced Center with Stack to support Positioned glow effects
+          children: [
+            // Top Right Glow
+            Positioned(
+              top: -100,
+              right: -50,
+              child: Container(
+                width: 300,
+                height: 300,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF4F46E5).withValues(alpha: 0.08),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF4F46E5).withValues(alpha: 0.08),
+                      blurRadius: 100,
+                      spreadRadius: 40,
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
+            // Bottom Left Glow
+            Positioned(
+              bottom: 50,
+              left: -50,
+              child: Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFF818CF8).withValues(alpha: 0.08),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF818CF8).withValues(alpha: 0.08),
+                      blurRadius: 80,
+                      spreadRadius: 30,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // MAIN CONTENT
+            SafeArea(
+              child: Center(
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: _buildCard(),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -326,12 +389,22 @@ class _TimeInPageState extends State<TimeInPage> {
               style: TextStyle(
                   fontSize: 14, fontWeight: FontWeight.w500, color: Colors.white70)),
           const SizedBox(height: 5),
-          Text(formatTime(now),
-              style: const TextStyle(
-                  fontSize: 48,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  letterSpacing: 2)),
+          RichText(
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: DateFormat('h:mm:ss').format(now),
+                  style: const TextStyle(
+                      fontSize: 58, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 2),
+                ),
+                TextSpan(
+                  text: DateFormat(' a').format(now),
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.8), letterSpacing: 1),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

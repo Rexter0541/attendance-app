@@ -33,7 +33,7 @@ class _PayrollPageState extends State<PayrollPage> {
   static const double _lateDeductionPerMinute = 0.01;
   static const int _requiredWorkHours = 8;
 
-  // UI Constants (Fixed prefer_const_declarations)
+  // UI Constants
   static const Color bgColor = Color(0xFFF8F9FC);
   static const Color primaryColor = Color(0xFF4F46E5);
   static const Color cardColor = Colors.white;
@@ -56,6 +56,7 @@ class _PayrollPageState extends State<PayrollPage> {
     final today = DateTime(now.year, now.month, now.day);
 
     try {
+      // Period 1 (1st to 15th)
       final period1Start = DateTime(year, month, 1);
       final period1End = DateTime(year, month, 15);
       final isFinal1 = today.isAfter(period1End);
@@ -74,6 +75,7 @@ class _PayrollPageState extends State<PayrollPage> {
         });
       }
 
+      // Period 2 (16th to End of Month)
       final period2Start = DateTime(year, month, 16);
       final period2End = DateTime(year, month + 1, 0);
       final isFinal2 = today.isAfter(period2End);
@@ -101,9 +103,7 @@ class _PayrollPageState extends State<PayrollPage> {
       debugPrint('Error calculating payroll: $e');
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -111,7 +111,6 @@ class _PayrollPageState extends State<PayrollPage> {
   Future<Map<String, dynamic>> _calculatePayForPeriod(DateTime start, DateTime end) async {
     double totalPay = 0;
     List<Map<String, dynamic>> dailyBreakdown = [];
-
     final adjustedEnd = DateTime(end.year, end.month, end.day, 23, 59, 59);
 
     final attendanceSnapshot = await FirebaseFirestore.instance
@@ -143,10 +142,9 @@ class _PayrollPageState extends State<PayrollPage> {
 
       final durationSeconds = calculationTimeOut.difference(timeIn).inSeconds;
       final hoursWorked = durationSeconds / 3600.0;
-
       final officialStart = DateTime(timeIn.year, timeIn.month, timeIn.day, 8, 0);
+      
       double lateDeduction = 0;
-
       if (timeIn.isAfter(officialStart)) {
         final minutesLate = timeIn.difference(officialStart).inMinutes;
         lateDeduction = minutesLate * _lateDeductionPerMinute;
@@ -176,11 +174,8 @@ class _PayrollPageState extends State<PayrollPage> {
     return {'total': totalPay, 'daily': dailyBreakdown};
   }
 
-  Future<void> _savePayrollToFirestore(
-      DateTime periodStart, DateTime periodEnd, double netPay, bool isFinal) async {
-    
+  Future<void> _savePayrollToFirestore(DateTime periodStart, DateTime periodEnd, double netPay, bool isFinal) async {
     final docId = '${periodStart.year}-${periodStart.month.toString().padLeft(2, '0')}-${periodStart.day == 1 ? '1' : '2'}';
-
     final payrollDocRef = FirebaseFirestore.instance
         .collection('employees')
         .doc(widget.employee.id)
@@ -205,18 +200,15 @@ class _PayrollPageState extends State<PayrollPage> {
 
   Future<void> _createPayrollNotificationIfNeeded(String payrollDocId, DateTime periodEnd, double netPay) async {
     if (user == null) return;
-
     final payrollDocRef = FirebaseFirestore.instance.collection('employees').doc(user!.uid).collection('payroll').doc(payrollDocId);
-
     final payrollDoc = await payrollDocRef.get();
-    if (payrollDoc.exists && payrollDoc.data()?['notificationSent'] == true) {
-      return;
-    }
+    
+    if (payrollDoc.exists && payrollDoc.data()?['notificationSent'] == true) return;
 
     await FirebaseFirestore.instance.collection('notifications').add({
       'recipientId': user!.uid,
       'title': 'Payroll Processed',
-      'body': 'Your payslip for the period ending ${DateFormat('MMM dd, yyyy').format(periodEnd)} amounting to ₱${netPay.toStringAsFixed(2)} is now available.',
+      'body': 'Your payslip for ending ${DateFormat('MMM dd, yyyy').format(periodEnd)} amounting to ₱${netPay.toStringAsFixed(2)} is now available.',
       'type': 'payroll',
       'isRead': false,
       'timestamp': FieldValue.serverTimestamp(),
@@ -229,52 +221,78 @@ class _PayrollPageState extends State<PayrollPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: bgColor,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        leading: Navigator.canPop(context)
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new, color: textColor, size: 20),
-                onPressed: () => Navigator.pop(context),
-              )
-            : null,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: textColor, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: const Text(
           'Payroll History',
           style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18),
         ),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 10),
-              _buildEmployeeCard(),
-              const SizedBox(height: 20),
-              _buildFilters(),
-              const SizedBox(height: 20),
-              Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator(color: primaryColor))
-                    : _payrollResults.isEmpty
-                        ? _buildEmptyState()
-                        : ListView.separated(
-                            physics: const BouncingScrollPhysics(),
-                            itemCount: _payrollResults.length,
-                            separatorBuilder: (context, index) => const SizedBox(height: 12),
-                            itemBuilder: (context, index) {
-                              return _buildPayrollCard(_payrollResults[index], index);
-                            },
-                          ),
-              ),
-            ],
+      body: Stack(
+        children: [
+          // Background Glows
+          Positioned(
+            top: -100,
+            right: -50,
+            child: _buildGlow(primaryColor.withValues(alpha: 0.08), 300),
           ),
-        ),
+          Positioned(
+            bottom: 50,
+            left: -50,
+            child: _buildGlow(const Color(0xFF818CF8).withValues(alpha: 0.08), 200),
+          ),
+
+          // Main Content
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 10),
+                  _buildEmployeeCard(),
+                  const SizedBox(height: 20),
+                  _buildFilters(),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: _isLoading
+                        ? const Center(child: CircularProgressIndicator(color: primaryColor))
+                        : _payrollResults.isEmpty
+                            ? _buildEmptyState()
+                            : ListView.separated(
+                                physics: const BouncingScrollPhysics(),
+                                itemCount: _payrollResults.length,
+                                separatorBuilder: (context, index) => const SizedBox(height: 12),
+                                itemBuilder: (context, index) => _buildPayrollCard(_payrollResults[index], index),
+                              ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
+
+  Widget _buildGlow(Color color, double size) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+          boxShadow: [
+            BoxShadow(color: color, blurRadius: 80, spreadRadius: 30),
+          ],
+        ),
+      );
 
   Widget _buildPayrollCard(Map<String, dynamic> data, int index) {
     final netPay = data['netpay'] ?? '0.00';
@@ -293,31 +311,21 @@ class _PayrollPageState extends State<PayrollPage> {
         color: cardColor,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4)),
         ],
       ),
       child: Column(
         children: [
           InkWell(
             onTap: () => setState(() => expandedRows[index] = !isExpanded),
-            borderRadius: BorderRadius.vertical(
-              top: const Radius.circular(16),
-              bottom: Radius.circular(isExpanded ? 0 : 16),
-            ),
+            borderRadius: BorderRadius.circular(16),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
                   Container(
                     padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: primaryColor.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
+                    decoration: BoxDecoration(color: primaryColor.withValues(alpha: 0.1), shape: BoxShape.circle),
                     child: const Icon(Icons.payments_outlined, color: primaryColor, size: 24),
                   ),
                   const SizedBox(width: 16),
@@ -325,30 +333,16 @@ class _PayrollPageState extends State<PayrollPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          '₱$netPay',
-                          style: const TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.w800, color: textColor),
-                        ),
+                        Text('₱$netPay', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
                         const SizedBox(height: 4),
-                        Text(
-                          '$month • $date',
-                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                        ),
+                        Text('$month • $date', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
                       ],
                     ),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      status,
-                      style: TextStyle(
-                          color: statusColor, fontSize: 12, fontWeight: FontWeight.bold),
-                    ),
+                    decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)),
+                    child: Text(status, style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
@@ -356,13 +350,8 @@ class _PayrollPageState extends State<PayrollPage> {
           ),
           if (isExpanded)
             Container(
-              decoration: BoxDecoration(
-                color: Colors.grey[50],
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-              ),
-              child: Column(
-                children: daily.map<Widget>((day) => _buildDailyDetail(day)).toList(),
-              ),
+              decoration: BoxDecoration(color: Colors.grey[50], borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16))),
+              child: Column(children: daily.map<Widget>((day) => _buildDailyDetail(day)).toList()),
             ),
         ],
       ),
@@ -371,12 +360,9 @@ class _PayrollPageState extends State<PayrollPage> {
 
   Widget _buildDailyDetail(Map<String, dynamic> day) {
     final bool isCapped = day['isCapped'] ?? false;
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: Colors.grey.shade200)),
-      ),
+      decoration: BoxDecoration(border: Border(top: BorderSide(color: Colors.grey.shade200))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -386,9 +372,9 @@ class _PayrollPageState extends State<PayrollPage> {
               Text(day['date'], style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
               if (isCapped)
                 Container(
-                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                   decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
-                   child: const Text('AUTO-TIMEOUT (9.5h)', style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: Colors.orange.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4)),
+                  child: const Text('AUTO-TIMEOUT (9.5h)', style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
                 ),
             ],
           ),
@@ -408,14 +394,14 @@ class _PayrollPageState extends State<PayrollPage> {
     );
   }
 
-  Widget _detailRow(String label, String value, {Color? color, bool isBold = false}) {
+  Widget _detailRow(String label, String value, {Color? color}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: const TextStyle(color: Colors.black54, fontSize: 12)),
-          Text(value, style: TextStyle(color: color ?? Colors.black87, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, fontSize: 12)),
+          Text(value, style: TextStyle(color: color ?? Colors.black87, fontSize: 12)),
         ],
       ),
     );
@@ -425,51 +411,29 @@ class _PayrollPageState extends State<PayrollPage> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF4F46E5), Color(0xFF818CF8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: const LinearGradient(colors: [Color(0xFF4F46E5), Color(0xFF818CF8)]),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF4F46E5).withValues(alpha: 0.3),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: primaryColor.withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))],
       ),
       child: Row(
         children: [
           CircleAvatar(
             radius: 24,
             backgroundColor: Colors.white.withValues(alpha: 0.2),
-            child: Text(
-              widget.employee.name[0].toUpperCase(),
-              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
-            ),
+            child: Text(widget.employee.name[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  widget.employee.name,
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
-                ),
+                Text(widget.employee.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    Container(
-                      width: 8, height: 8,
-                      decoration: BoxDecoration(color: widget.statusColor, shape: BoxShape.circle),
-                    ),
+                    Container(width: 8, height: 8, decoration: BoxDecoration(color: widget.statusColor, shape: BoxShape.circle)),
                     const SizedBox(width: 8),
-                    Text(
-                      widget.currentStatus,
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12),
-                    ),
+                    Text(widget.currentStatus, style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12)),
                   ],
                 )
               ],
@@ -493,11 +457,7 @@ class _PayrollPageState extends State<PayrollPage> {
   Widget _buildFilterDropdown(String value, IconData icon) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -508,17 +468,16 @@ class _PayrollPageState extends State<PayrollPage> {
     );
   }
 
- Widget _buildEmptyState() {
-    return const Column( // Added const here
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.receipt_long_outlined, size: 80, color: Colors.grey),
-        SizedBox(height: 10),
-        Text(
-          'No payroll records found', 
-          style: TextStyle(color: Colors.grey, fontSize: 14),
-        ),
-      ],
+  Widget _buildEmptyState() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.receipt_long_outlined, size: 80, color: Colors.grey),
+          SizedBox(height: 10),
+          Text('No payroll records found', style: TextStyle(color: Colors.grey, fontSize: 14)),
+        ],
+      ),
     );
   }
 
@@ -539,35 +498,37 @@ class _PayrollPageState extends State<PayrollPage> {
   }
 }
 
+// --- Dialogs ---
+
+// --- Dialogs ---
+
 class _YearPickerDialog extends StatelessWidget {
   final int initialYear;
   const _YearPickerDialog({required this.initialYear});
-  @override Widget build(BuildContext context) {
+
+  @override
+  Widget build(BuildContext context) {
     final int currentYear = DateTime.now().year;
     final List<int> years = List.generate(6, (index) => currentYear - 5 + index).reversed.toList();
-
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      title: const Text('Select Year', style: TextStyle(fontWeight: FontWeight.bold)),
+      title: const Text('Select Year'),
       content: SizedBox(
         width: 100,
         height: 250,
         child: ListView.builder(
-          shrinkWrap: true,
           itemCount: years.length,
-          itemBuilder: (context, index) {
-            final year = years[index];
-            return ListTile(
-              title: Text(
-                year.toString(),
-                style: TextStyle(
-                  fontWeight: year == initialYear ? FontWeight.bold : FontWeight.normal,
-                  color: year == initialYear ? const Color(0xFF4F46E5) : null,
-                ),
-              ),
-              onTap: () => Navigator.of(context).pop(year),
-            );
-          },
+          itemBuilder: (context, index) => ListTile(
+            // Accessing the color via the State class name
+            title: Text(
+              years[index].toString(), 
+              style: TextStyle(
+                color: years[index] == initialYear ? _PayrollPageState.primaryColor : null, 
+                fontWeight: years[index] == initialYear ? FontWeight.bold : null
+              )
+            ),
+            onTap: () => Navigator.pop(context, years[index]),
+          ),
         ),
       ),
     );
@@ -577,27 +538,28 @@ class _YearPickerDialog extends StatelessWidget {
 class _MonthPickerDialog extends StatelessWidget {
   final int initialMonth;
   const _MonthPickerDialog({required this.initialMonth});
-  @override Widget build(BuildContext context) {
+
+  @override
+  Widget build(BuildContext context) {
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-      title: const Text('Select Month', style: TextStyle(fontWeight: FontWeight.bold)),
+      title: const Text('Select Month'),
       content: SizedBox(
         width: 100,
         height: 350,
         child: ListView.builder(
-          shrinkWrap: true,
           itemCount: 12,
-          itemBuilder: (context, index) {
-            final month = index + 1;
-            final monthName = DateFormat('MMMM').format(DateTime(0, month));
-            return ListTile(
-              title: Text(monthName,
-                  style: TextStyle(
-                      fontWeight: month == initialMonth ? FontWeight.bold : FontWeight.normal,
-                      color: month == initialMonth ? const Color(0xFF4F46E5) : null)),
-              onTap: () => Navigator.of(context).pop(month),
-            );
-          },
+          itemBuilder: (context, index) => ListTile(
+            // Accessing the color via the State class name
+            title: Text(
+              DateFormat('MMMM').format(DateTime(0, index + 1)), 
+              style: TextStyle(
+                color: (index + 1) == initialMonth ? _PayrollPageState.primaryColor : null, 
+                fontWeight: (index + 1) == initialMonth ? FontWeight.bold : null
+              )
+            ),
+            onTap: () => Navigator.pop(context, index + 1),
+          ),
         ),
       ),
     );

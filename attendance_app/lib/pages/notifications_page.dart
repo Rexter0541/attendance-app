@@ -103,13 +103,19 @@ class _NotificationsPageState extends State<NotificationsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F3F7),
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: const Text('Notifications', style: TextStyle(fontWeight: FontWeight.bold)),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        elevation: 1,
-        foregroundColor: Colors.black,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        foregroundColor: const Color(0xFF1E293B),
+        leading: Navigator.canPop(context)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
         actions: [
           IconButton(
             icon: const Icon(Icons.playlist_add_check),
@@ -118,72 +124,136 @@ class _NotificationsPageState extends State<NotificationsPage> {
           ),
         ],
       ),
-      body: _currentUser == null
-          ? const Center(child: Text('You must be logged in.'))
-          : StreamBuilder<QuerySnapshot>(
-              stream: _firestore
-                  .collection('notifications')
-                  .where('recipientId', isEqualTo: _currentUser.uid)
-                  .orderBy('timestamp', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                // Check for errors (e.g., Missing Index)
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Text('Something went wrong.\n\nError: ${snapshot.error}\n\nCheck debug console for Index link.', textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
-                    ),
-                  );
-                }
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return _buildEmptyState();
-                }
-
-                final notifications = snapshot.data!.docs;
-
-                return ListView.builder(
-                  padding: const EdgeInsets.all(15),
-                  itemCount: notifications.length,
-                  itemBuilder: (context, index) {
-                    final doc = notifications[index];
-                    final data = doc.data() as Map<String, dynamic>;
-                    final notificationId = doc.id;
-
-                    final String title = data['title'] ?? 'No Title';
-                    final String body = data['body'] ?? 'No content.';
-                    final String type = data['type'] ?? 'general';
-                    final bool isRead = data['isRead'] ?? false;
-                    final Timestamp? timestamp = data['timestamp'];
-                    String timeAgo = 'Just now';
-                    if (timestamp != null) {
-                      final diff = DateTime.now().difference(timestamp.toDate());
-                      if (diff.inDays > 0) {
-                        timeAgo = '${diff.inDays}d ago';
-                      } else if (diff.inHours > 0) {
-                        timeAgo = '${diff.inHours}h ago';
-                      } else if (diff.inMinutes > 0) {
-                        timeAgo = '${diff.inMinutes}m ago';
-                      }
-                    }
-
-                    return _buildNotificationItem(
-                      notificationId,
-                      title,
-                      body,
-                      timeAgo,
-                      _getIconForType(type),
-                      _getColorForType(type),
-                      isUnread: !isRead,
-                      type: type, // Pass the type here
-                    );
-                  },
-                );
-              },
+      body: Stack(
+        children: [
+          // AMBIENT BACKGROUND LAYER (Blur/Glass Effect Base)
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFF8F9FC),
+                  Color(0xFFE0E7FF),
+                ],
+              ),
             ),
+          ),
+          // Top Right Glow
+          Positioned(
+            top: -100,
+            right: -50,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF4F46E5).withOpacity(0.08),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF4F46E5).withOpacity(0.08),
+                    blurRadius: 100,
+                    spreadRadius: 40,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Bottom Left Glow
+          Positioned(
+            bottom: 50,
+            left: -50,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF818CF8).withOpacity(0.08),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF818CF8).withOpacity(0.08),
+                    blurRadius: 80,
+                    spreadRadius: 30,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // MAIN CONTENT
+          SafeArea(
+            child: _currentUser == null
+                ? const Center(child: Text('You must be logged in.'))
+                : StreamBuilder<QuerySnapshot>(
+                    stream: _firestore
+                        .collection('notifications')
+                        .where('recipientId', isEqualTo: _currentUser.uid)
+                        .orderBy('timestamp', descending: true)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      // Check for errors
+                      if (snapshot.hasError) {
+                        return Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Text(
+                                'Something went wrong.\n\nError: ${snapshot.error}',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Colors.red)),
+                          ),
+                        );
+                      }
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                        return _buildEmptyState();
+                      }
+
+                      final notifications = snapshot.data!.docs;
+
+                      return ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+                        itemCount: notifications.length,
+                        itemBuilder: (context, index) {
+                          final doc = notifications[index];
+                          final data = doc.data() as Map<String, dynamic>;
+                          final notificationId = doc.id;
+                          // ... (Data extraction logic remains the same)
+                          final String title = data['title'] ?? 'No Title';
+                          final String body = data['body'] ?? 'No content.';
+                          final String type = data['type'] ?? 'general';
+                          final bool isRead = data['isRead'] ?? false;
+                          final Timestamp? timestamp = data['timestamp'];
+                          String timeAgo = 'Just now';
+                          if (timestamp != null) {
+                            final diff = DateTime.now().difference(timestamp.toDate());
+                            if (diff.inDays > 0) {
+                              timeAgo = '${diff.inDays}d ago';
+                            } else if (diff.inHours > 0) {
+                              timeAgo = '${diff.inHours}h ago';
+                            } else if (diff.inMinutes > 0) {
+                              timeAgo = '${diff.inMinutes}m ago';
+                            }
+                          }
+
+                          return _buildNotificationItem(
+                            notificationId,
+                            title,
+                            body,
+                            timeAgo,
+                            _getIconForType(type),
+                            _getColorForType(type),
+                            isUnread: !isRead,
+                            type: type,
+                          );
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
     );
   }
 

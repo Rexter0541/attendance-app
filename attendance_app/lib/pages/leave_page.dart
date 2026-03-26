@@ -1,5 +1,4 @@
 // ignore_for_file: prefer_single_quotes
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -46,7 +45,7 @@ class _LeavePageState extends State<LeavePage> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       elevation: 0,
-      barrierColor: Colors.black.withValues(alpha: 0.5),
+      barrierColor: Colors.black.withOpacity(0.5),
       builder: (_) => const _ApplyLeaveForm(),
     );
   }
@@ -69,9 +68,6 @@ class _LeavePageState extends State<LeavePage> {
 
   @override
   Widget build(BuildContext context) {
-    DateTime startOfMonth = DateTime(_selectedYear, _selectedMonth, 1);
-    DateTime endOfMonth = DateTime(_selectedYear, _selectedMonth + 1, 0, 23, 59, 59);
-
     return Scaffold(
       backgroundColor: bgColor,
       resizeToAvoidBottomInset: false,
@@ -86,49 +82,104 @@ class _LeavePageState extends State<LeavePage> {
         title: const Text('Leave Requests', 
           style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18, fontFamily: 'Helvetica')),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 10),
-              _buildEmployeeCard(),
-              const SizedBox(height: 20),
-              _buildFilters(),
-              const SizedBox(height: 20),
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('employees')
-                      .doc(user?.uid)
-                      .collection('leaves')
-                      .where('startDate', isGreaterThanOrEqualTo: startOfMonth)
-                      .where('startDate', isLessThanOrEqualTo: endOfMonth)
-                      .orderBy('startDate', descending: true)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) return const Center(child: Text('Query Error: Check Firestore Indexes'));
-                    if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: primaryColor));
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return _buildEmptyState();
-                    
-                    final docs = snapshot.data!.docs;
-                    return ListView.separated(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.only(bottom: 100),
-                      itemCount: docs.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                         final data = docs[index].data() as Map<String, dynamic>;
-                         return _buildLeaveCard(data, index);
-                      },
-                    );
-                  },
-                ),
+      body: Stack(
+        children: [
+          // Background Glow Effects
+          Positioned(
+            top: -100,
+            right: -50,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primaryColor.withOpacity(0.08),
+                boxShadow: [
+                  BoxShadow(
+                    color: primaryColor.withOpacity(0.08),
+                    blurRadius: 100,
+                    spreadRadius: 40,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          Positioned(
+            bottom: 50,
+            left: -50,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF818CF8).withOpacity(0.08),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF818CF8).withOpacity(0.08),
+                    blurRadius: 80,
+                    spreadRadius: 30,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Main Content Layer
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 10),
+                  _buildEmployeeCard(),
+                  const SizedBox(height: 20),
+                  _buildFilters(),
+                  const SizedBox(height: 20),
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('employees')
+                          .doc(user?.uid)
+                          .collection('leaves')
+                          .orderBy('filedDate', descending: true)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator(color: primaryColor));
+                        }
+                        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                          return _buildEmptyState();
+                        }
+
+                        // Filter logic based on the selected Year and Month
+                        final filteredDocs = snapshot.data!.docs.where((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          final startTimestamp = data['startDate'] as Timestamp?;
+                          if (startTimestamp == null) return false;
+                          final startDate = startTimestamp.toDate();
+                          return startDate.year == _selectedYear && startDate.month == _selectedMonth;
+                        }).toList();
+
+                        if (filteredDocs.isEmpty) return _buildEmptyState();
+
+                        return ListView.separated(
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.only(bottom: 100),
+                          itemCount: filteredDocs.length,
+                          separatorBuilder: (context, index) => const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                             return _buildLeaveCard(filteredDocs[index].data() as Map<String, dynamic>, index);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showApplyLeaveForm,
@@ -147,11 +198,15 @@ class _LeavePageState extends State<LeavePage> {
       decoration: BoxDecoration(
         gradient: const LinearGradient(colors: [primaryColor, Color(0xFF818CF8)], begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: primaryColor.withValues(alpha: 0.3), blurRadius: 15, offset: const Offset(0, 8))],
+        boxShadow: [BoxShadow(color: primaryColor.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))],
       ),
       child: Row(
         children: [
-          CircleAvatar(radius: 24, backgroundColor: Colors.white.withValues(alpha: 0.2), child: Text(widget.employee.name[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20))),
+          CircleAvatar(
+            radius: 24, 
+            backgroundColor: Colors.white.withOpacity(0.2), 
+            child: Text(widget.employee.name[0].toUpperCase(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20))
+          ),
           const SizedBox(width: 16),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(widget.employee.name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
@@ -159,7 +214,7 @@ class _LeavePageState extends State<LeavePage> {
             Row(children: [
               Container(width: 8, height: 8, decoration: BoxDecoration(color: widget.statusColor, shape: BoxShape.circle)),
               const SizedBox(width: 8),
-              Text(widget.currentStatus, style: TextStyle(color: Colors.white.withValues(alpha: 0.9), fontSize: 12)),
+              Text(widget.currentStatus, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12)),
             ]),
           ])),
         ],
@@ -201,14 +256,14 @@ class _LeavePageState extends State<LeavePage> {
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 300),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 10, offset: const Offset(0, 4))]),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))]),
       child: Column(children: [
         ListTile(
           onTap: () => setState(() => expandedRows[index] = !isExpanded),
-          leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: primaryColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.calendar_today_rounded, color: primaryColor, size: 20)),
+          leading: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.calendar_today_rounded, color: primaryColor, size: 20)),
           title: Text(data['type'] ?? 'Leave', style: const TextStyle(fontWeight: FontWeight.bold, color: textColor)),
           subtitle: Text('Filed: $fromDate', style: const TextStyle(fontSize: 12)),
-          trailing: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: itemStatusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(20)), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(statusIcon, size: 12, color: itemStatusColor), const SizedBox(width: 4), Text(data['status'] ?? 'Pending', style: TextStyle(color: itemStatusColor, fontWeight: FontWeight.bold, fontSize: 11))])),
+          trailing: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: itemStatusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(20)), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(statusIcon, size: 12, color: itemStatusColor), const SizedBox(width: 4), Text(data['status'] ?? 'Pending', style: TextStyle(color: itemStatusColor, fontWeight: FontWeight.bold, fontSize: 11))])),
         ),
         if (isExpanded) Container(width: double.infinity, padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('DETAILS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.0)),
