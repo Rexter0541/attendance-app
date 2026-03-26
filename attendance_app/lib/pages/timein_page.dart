@@ -31,7 +31,7 @@ class _TimeInPageState extends State<TimeInPage> {
   void initState() {
     super.initState();
     // 1. Start the digital clock
-    timer = Timer.periodic(const Duration(seconds: 1), (_) {
+    timer = Timer.periodic(const Duration(milliseconds: 30), (_) {
       if (mounted) setState(() => now = DateTime.now());
     });
 
@@ -138,6 +138,11 @@ class _TimeInPageState extends State<TimeInPage> {
       'timestamp': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
+    // ✅ IMPORTANT: Update the employee record so the app knows the active session ID
+    await FirebaseFirestore.instance.collection('employees').doc(widget.employee.id).set({
+      'attendanceId': docRef.id
+    }, SetOptions(merge: true));
+
     // --- NOTIFICATION LOGIC ---
     final now = DateTime.now();
     final officialStart = DateTime(now.year, now.month, now.day, 8, 15); // 8:15 AM threshold
@@ -145,7 +150,7 @@ class _TimeInPageState extends State<TimeInPage> {
 
     final title = isLate ? 'You are Late' : 'Time-In Successful';
     final body = isLate
-        ? 'You clocked in at ${DateFormat('h:mm a').format(now)}. Please be mindful of your schedule.'
+        ? 'You clocked in at ${DateFormat('h:mm a').format(now)}. Please pay attention to the time next time.'
         : 'You clocked in at ${DateFormat('h:mm a').format(now)}. Have a productive day!';
     final type = isLate ? 'attendance_late' : 'attendance_present';
 
@@ -162,6 +167,24 @@ class _TimeInPageState extends State<TimeInPage> {
     _addLog('Clock in recorded successfully ✅');
     _listenAttendance(docRef.id); // Ensure we are listening to this specific doc
     setState(() => isProcessing = false);
+
+    // --- SHOW IMMEDIATE POPUP DIALOG ---
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+          title: Row(children: [
+            Icon(isLate ? Icons.warning_amber_rounded : Icons.check_circle_outline, 
+                 color: isLate ? Colors.orange : Colors.green),
+            const SizedBox(width: 10),
+            Text(isLate ? 'Late Warning' : 'Success', style: const TextStyle(fontWeight: FontWeight.bold)),
+          ]),
+          content: Text(body),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Okay'))],
+        ),
+      );
+    }
   }
 
   // =====================================================
@@ -267,7 +290,7 @@ class _TimeInPageState extends State<TimeInPage> {
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FC),
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -279,13 +302,74 @@ class _TimeInPageState extends State<TimeInPage> {
             style: TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.bold)),
         centerTitle: true,
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: _buildCard(),
+      body: Stack(
+        children: [
+          // AMBIENT BACKGROUND LAYER
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFF8F9FC),
+                  Color(0xFFE0E7FF),
+                ],
+              ),
+            ),
           ),
-        ),
+          // Top Right Glow
+          Positioned(
+            top: -100,
+            right: -50,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF4F46E5).withOpacity(0.08),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF4F46E5).withOpacity(0.08),
+                    blurRadius: 100,
+                    spreadRadius: 40,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Bottom Left Glow
+          Positioned(
+            bottom: 50,
+            left: -50,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF818CF8).withOpacity(0.08),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF818CF8).withOpacity(0.08),
+                    blurRadius: 80,
+                    spreadRadius: 30,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // MAIN CONTENT
+          SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: _buildCard(),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -315,12 +399,22 @@ class _TimeInPageState extends State<TimeInPage> {
               style: TextStyle(
                   fontSize: 14, fontWeight: FontWeight.w500, color: Colors.white70)),
           const SizedBox(height: 5),
-          Text(formatTime(now),
-              style: const TextStyle(
-                  fontSize: 48,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  letterSpacing: 2)),
+          RichText(
+            text: TextSpan(
+              children: [
+                TextSpan(
+                  text: DateFormat('h:mm:ss').format(now), // Hours, Mins, Seconds (Big)
+                  style: const TextStyle(
+                      fontSize: 58, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 2),
+                ),
+                TextSpan(
+                  text: DateFormat(' a').format(now), // AM/PM
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w600, color: Colors.white.withOpacity(0.8), letterSpacing: 1),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),

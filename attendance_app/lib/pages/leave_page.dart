@@ -74,7 +74,7 @@ class _LeavePageState extends State<LeavePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: bgColor,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -90,61 +90,120 @@ class _LeavePageState extends State<LeavePage> {
           style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18),
         ),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 10),
-              _buildEmployeeCard(),
-              const SizedBox(height: 20),
-              _buildFilters(),
-              const SizedBox(height: 20),
-
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('employees')
-                      .doc(user?.uid)
-                      .collection('leaves')
-                      .orderBy('filedDate', descending: true)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator(color: primaryColor));
-                    }
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return _buildEmptyState();
-                    }
-
-                    // Filter leaves by selected year & month based on startDate
-                    final filteredDocs = snapshot.data!.docs.where((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      final startTimestamp = data['startDate'] as Timestamp?;
-                      if (startTimestamp == null) return false;
-                      final startDate = startTimestamp.toDate();
-                      return startDate.year == _selectedYear && startDate.month == _selectedMonth;
-                    }).toList();
-
-                    if (filteredDocs.isEmpty) {
-                      return _buildEmptyState();
-                    }
-
-                    return ListView.separated(
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: filteredDocs.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        return _buildLeaveCard(filteredDocs[index].data() as Map<String, dynamic>, index);
-                      },
-                    );
-                  },
-                ),
+      body: Stack(
+        children: [
+          // AMBIENT BACKGROUND LAYER
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topRight,
+                end: Alignment.bottomLeft,
+                colors: [
+                  Color(0xFFF8F9FC),
+                  Color(0xFFE0E7FF),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          // Top Right Glow
+          Positioned(
+            top: -100, // Adjusted to match Home Page (-100 instead of -50)
+            right: -50,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primaryColor.withOpacity(0.08),
+                boxShadow: [
+                  BoxShadow(
+                    color: primaryColor.withOpacity(0.08),
+                    blurRadius: 100,
+                    spreadRadius: 40,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Bottom Left Glow (Added to match Home Page)
+          Positioned(
+            bottom: 50,
+            left: -50,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF818CF8).withOpacity(0.08),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF818CF8).withOpacity(0.08),
+                    blurRadius: 80,
+                    spreadRadius: 30,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // MAIN CONTENT
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 10),
+                  _buildEmployeeCard(),
+                  const SizedBox(height: 20),
+                  _buildFilters(),
+                  const SizedBox(height: 20),
+
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('employees')
+                          .doc(user?.uid)
+                          .collection('leaves')
+                          .orderBy('filedDate', descending: true)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator(color: primaryColor));
+                        }
+                        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                          return _buildEmptyState();
+                        }
+
+                        // Filter leaves by selected year & month based on startDate
+                        final filteredDocs = snapshot.data!.docs.where((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          final startTimestamp = data['startDate'] as Timestamp?;
+                          if (startTimestamp == null) return false;
+                          final startDate = startTimestamp.toDate();
+                          return startDate.year == _selectedYear && startDate.month == _selectedMonth;
+                        }).toList();
+
+                        if (filteredDocs.isEmpty) {
+                          return _buildEmptyState();
+                        }
+
+                        return ListView.separated(
+                          physics: const BouncingScrollPhysics(),
+                          itemCount: filteredDocs.length,
+                          separatorBuilder: (context, index) => const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            return _buildLeaveCard(filteredDocs[index].data() as Map<String, dynamic>, index);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
        floatingActionButton: FloatingActionButton.extended(
     onPressed: _showApplyLeaveForm,
@@ -297,6 +356,10 @@ class _LeavePageState extends State<LeavePage> {
                       "${DateFormat('MMM dd').format((data['startDate'] as Timestamp).toDate())} - ${DateFormat('MMM dd').format((data['endDate'] as Timestamp).toDate())}"),
                   const SizedBox(height: 8),
                   _buildDetailRow(Icons.notes, "Reason", reason),
+                  if (status != 'Pending') ...[
+                    const SizedBox(height: 8),
+                    _buildDetailRow(Icons.verified_user_outlined, "Processed By", data['approverName'] ?? 'HR Admin'),
+                  ],
                 ],
               ),
             ),

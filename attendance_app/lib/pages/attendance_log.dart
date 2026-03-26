@@ -98,7 +98,7 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: bgColor,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -114,45 +114,104 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
           style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 18),
         ),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 10),
-              _buildEmployeeCard(),
-              const SizedBox(height: 20),
-              _buildFilters(),
-              const SizedBox(height: 20),
-
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: _attendanceStream,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator(color: primaryColor));
-                    }
-
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return _buildEmptyState();
-                    }
-
-                    return ListView.separated(
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: snapshot.data!.docs.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final data = snapshot.data!.docs[index].data() as Map<String, dynamic>;
-                        return _buildAttendanceCard(data);
-                      },
-                    );
-                  },
-                ),
+      body: Stack(
+        children: [
+           // AMBIENT BACKGROUND LAYER
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFF8F9FC),
+                  Color(0xFFE0E7FF),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          Positioned(
+            top: -100,
+            right: -50, // Moved to Right to match Home Page
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: primaryColor.withOpacity(0.08),
+                boxShadow: [
+                  BoxShadow(
+                    color: primaryColor.withOpacity(0.08),
+                    blurRadius: 100,
+                    spreadRadius: 40,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // Bottom Left Glow (Added to match Home Page)
+          Positioned(
+            bottom: 50,
+            left: -50,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF818CF8).withOpacity(0.08),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF818CF8).withOpacity(0.08),
+                    blurRadius: 80,
+                    spreadRadius: 30,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // MAIN CONTENT
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 10),
+                  _buildEmployeeCard(),
+                  const SizedBox(height: 15),
+                  _buildFilters(),
+                  const SizedBox(height: 15),
+
+                  Expanded(
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: _attendanceStream,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator(color: primaryColor));
+                        }
+
+                        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                          return _buildEmptyState();
+                        }
+
+                        return ListView.separated(
+                          physics: const BouncingScrollPhysics(),
+                          itemCount: snapshot.data!.docs.length,
+                          separatorBuilder: (context, index) => const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final data = snapshot.data!.docs[index].data() as Map<String, dynamic>;
+                            return _buildAttendanceCard(data);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -170,6 +229,7 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
     final String timeOut = data['timeOut'] != null
         ? DateFormat('h:mm a').format((data['timeOut'] as Timestamp).toDate())
         : '--';
+    final bool isAutoTimeout = data['status'] == 'Auto-Logged Out (Max OT)';
 
     // Logic para sa Status (Late vs On Time)
     String status = '--';
@@ -214,12 +274,12 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
             child: Column(
               children: [
                 Text(
-                  date.split(' ')[1], // Day
+                  date.contains(' ') ? date.split(' ')[1] : '--', // Day
                   style: const TextStyle(
                       fontWeight: FontWeight.bold, fontSize: 18, color: primaryColor),
                 ),
                 Text(
-                  date.split(' ')[0], // Month
+                  date.contains(' ') ? date.split(' ')[0] : date, // Month
                   style: const TextStyle(fontSize: 12, color: primaryColor),
                 ),
               ],
@@ -245,6 +305,14 @@ class _AttendanceLogPageState extends State<AttendanceLogPage> {
                       style: TextStyle(
                           color: itemStatusColor, fontWeight: FontWeight.bold, fontSize: 12),
                     ),
+                    if (isAutoTimeout) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(4)),
+                        child: const Text('AUTO-TIMEOUT', style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
                   ],
                 )
               ],

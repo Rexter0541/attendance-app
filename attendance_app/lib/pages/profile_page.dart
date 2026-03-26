@@ -1,9 +1,11 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/employee.dart';
+import 'meeting_page.dart';
 import 'notifications_page.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -339,7 +341,7 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ProfilePage.bgColor,
+      extendBodyBehindAppBar: true, // Para umabot ang gradient sa status bar
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -349,77 +351,145 @@ class _ProfilePageState extends State<ProfilePage> {
             style: TextStyle(
                 color: ProfilePage.textColor, fontWeight: FontWeight.bold)),
       ),
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
-        child: Column(
-          children: [
-            _buildProfileHeader(),
-            const SizedBox(height: 25),
-            _buildSectionContainer('Personal Information', [
-              _buildProfileItem(Icons.badge_outlined, 'Employee ID', _employeeIdDisplay),
-              _buildDivider(),
-              _buildProfileItem(Icons.email_outlined, 'Email', _email),
-              _buildDivider(),
-              _buildProfileItem(Icons.phone_android_outlined, 'Phone', _phone,
-                  canEdit: true,
-                  onTap: () => _editField('Phone', 'phone', _phone)),
-              _buildDivider(),
-              _buildProfileItem(Icons.location_on_outlined, 'Office', _office,
-                  canEdit: true,
-                  onTap: () => _editField('Office', 'office', _office)),
-            ]),
-            const SizedBox(height: 20),
-            _buildSectionContainer('Employment', [
-              _buildProfileItem(
-                  Icons.work_outline, 'Employment Status', 'Full-Time Regular'),
-              _buildDivider(),
-              _buildProfileItem(
-                  Icons.schedule, 'Work Schedule', '08:00 AM - 05:00 PM'),
-              _buildDivider(),
-              _buildProfileItem(Icons.supervisor_account_outlined,
-                  'Immediate Supervisor', 'Engr. Ayro'),
-            ]),
-            const SizedBox(height: 20),
-            _buildSectionContainer('Emergency Contact', [
-              _buildProfileItem(
-                  Icons.contact_phone_outlined, 'Contact Person', _emergencyName,
-                  canEdit: true,
-                  onTap: () => _editField('Contact Person',
-                      'emergencyContactName', _emergencyName)),
-              _buildDivider(),
-              _buildProfileItem(
-                  Icons.family_restroom, 'Relationship', _emergencyRelation,
-                  canEdit: true,
-                  onTap: () => _editField('Relationship',
-                      'emergencyContactRelation', _emergencyRelation)),
-            ]),
-            const SizedBox(height: 20),
-            _buildSectionContainer('Settings & Security', [
-              _buildMenuOption(Icons.lock_outline, 'Change Password',
-                  onTap: _showChangePasswordDialog),
-              _buildDivider(),
-              _buildMenuOption(
-                Icons.notifications_none_outlined,
-                'Notifications',
-                onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (_) => NotificationsPage(
-                            employee: widget.employee))),
+      body: Stack(
+        children: [
+          // AMBIENT BACKGROUND LAYER
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFF8F9FC), // Base white/grey
+                  Color(0xFFE0E7FF), // Very light indigo for premium feel
+                ],
               ),
-            ]),
-            const SizedBox(height: 20),
-            _buildSectionContainer('Support', [
-              _buildMenuOption(Icons.help_outline, 'Help Center'),
-              _buildDivider(),
-              _buildMenuOption(Icons.privacy_tip_outlined, 'Privacy Policy'),
-              _buildDivider(),
-              _buildMenuOption(Icons.info_outline, 'App Version',
-                  trailing: 'v1.0.0'),
-            ]),
-          ],
-        ),
+            ),
+          ),
+          // Glowing Blobs (Ambience)
+          Positioned(
+            top: -100,
+            right: -100,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF4F46E5).withOpacity(0.1),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF4F46E5).withOpacity(0.1),
+                    blurRadius: 100,
+                    spreadRadius: 50,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 50,
+            left: -50,
+            child: Container(
+              width: 200,
+              height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF818CF8).withOpacity(0.1),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF818CF8).withOpacity(0.1),
+                    blurRadius: 80,
+                    spreadRadius: 40,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // MAIN CONTENT
+          SafeArea(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
+              child: Column(
+                children: [
+                  _buildProfileHeader(),
+                  const SizedBox(height: 25),
+                  _buildSectionContainer('Personal Information', [
+                    _buildProfileItem(Icons.badge_outlined, 'Employee ID', _employeeIdDisplay),
+                    _buildDivider(),
+                    _buildProfileItem(Icons.email_outlined, 'Email', _email),
+                    _buildDivider(),
+                    _buildProfileItem(Icons.phone_android_outlined, 'Phone', _phone,
+                        canEdit: true,
+                        onTap: () => _editField('Phone', 'phone', _phone)),
+                    _buildDivider(),
+                    _buildProfileItem(Icons.location_on_outlined, 'Office', _office,
+                        canEdit: true,
+                        onTap: () => _editField('Office', 'office', _office)),
+                  ]),
+                  const SizedBox(height: 20),
+                  _buildSectionContainer('Employment', [
+                    _buildProfileItem(
+                        Icons.work_outline, 'Employment Status', 'Full-Time Regular'),
+                    _buildDivider(),
+                    _buildProfileItem(
+                        Icons.schedule, 'Work Schedule', '08:00 AM - 05:00 PM'),
+                    _buildDivider(),
+                    _buildProfileItem(Icons.supervisor_account_outlined,
+                        'Immediate Supervisor', 'Engr. Ayro'),
+                  ]),
+                  const SizedBox(height: 20),
+                  _buildSectionContainer('Emergency Contact', [
+                    _buildProfileItem(
+                        Icons.contact_phone_outlined, 'Contact Person', _emergencyName,
+                        canEdit: true,
+                        onTap: () => _editField('Contact Person',
+                            'emergencyContactName', _emergencyName)),
+                    _buildDivider(),
+                    _buildProfileItem(
+                        Icons.family_restroom, 'Relationship', _emergencyRelation,
+                        canEdit: true,
+                        onTap: () => _editField('Relationship',
+                            'emergencyContactRelation', _emergencyRelation)),
+                  ]),
+                  const SizedBox(height: 20),
+                  _buildSectionContainer('Settings & Security', [
+                    _buildMenuOption(Icons.lock_outline, 'Change Password',
+                        onTap: _showChangePasswordDialog),
+                    _buildDivider(),
+                    _buildMenuOption(
+                      Icons.notifications_none_outlined,
+                      'Notifications',
+                      onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => NotificationsPage(
+                                  employee: widget.employee))),
+                    ),
+                    _buildDivider(),
+                    _buildMenuOption(
+                      Icons.video_call_outlined,
+                      'Online Meeting',
+                      onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => MeetingPage(employee: widget.employee))),
+                    ),
+                  ]),
+                  const SizedBox(height: 20),
+                  _buildSectionContainer('Support', [
+                    _buildMenuOption(Icons.help_outline, 'Help Center'),
+                    _buildDivider(),
+                    _buildMenuOption(Icons.privacy_tip_outlined, 'Privacy Policy'),
+                    _buildDivider(),
+                    _buildMenuOption(Icons.info_outline, 'App Version',
+                        trailing: 'v1.0.0'),
+                  ]),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

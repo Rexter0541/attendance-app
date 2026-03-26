@@ -329,7 +329,7 @@ class _HomePageState extends State<HomePage> {
 
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 80),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -386,7 +386,7 @@ class _HomePageState extends State<HomePage> {
             mainAxisSpacing: 15,
             childAspectRatio: 1.5,
             children: [
-              _buildStatCard('Present', presentCount.toString(), Icons.check_circle_rounded, presentColor),
+              _buildStatCard('On Time/Present', presentCount.toString(), Icons.check_circle_rounded, presentColor),
               _buildStatCard('Absent', absentCount.toString(), Icons.cancel_rounded, absentColor),
               _buildStatCard('Late', lateCount.toString(), Icons.access_time, lateColor),
               _buildStatCard('Leave', leaveCount.toString(), Icons.edit_calendar_outlined, leaveColor),
@@ -410,7 +410,7 @@ class _HomePageState extends State<HomePage> {
                   child: _buildSmallInfoCard(
                       'Events',
                       Icons.event_note_rounded,
-                      Colors.orangeAccent,
+                      Colors.pinkAccent,
                       () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EventsPage()))
                   )),
             ],
@@ -730,8 +730,66 @@ class _HomePageState extends State<HomePage> {
         }
 
         return Scaffold(
-          backgroundColor: bgColor,
-          body: getSelectedPage(displayEmployee),
+          body: Stack(
+            children: [
+              // AMBIENT BACKGROUND LAYER
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFFF8F9FC),
+                      Color(0xFFE0E7FF),
+                    ],
+                  ),
+                ),
+              ),
+              // Top Right Glow
+              Positioned(
+                top: -100,
+                right: -50,
+                child: Container(
+                  width: 300,
+                  height: 300,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: primaryColor.withOpacity(0.08),
+                    boxShadow: [
+                      BoxShadow(
+                        color: primaryColor.withOpacity(0.08),
+                        blurRadius: 100,
+                        spreadRadius: 40,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // Bottom Left Glow
+              Positioned(
+                bottom: 100,
+                left: -50,
+                child: Container(
+                  width: 200,
+                  height: 200,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF818CF8).withOpacity(0.08),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF818CF8).withOpacity(0.08),
+                        blurRadius: 80,
+                        spreadRadius: 30,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // MAIN CONTENT (Dashboard or Selected Page)
+              getSelectedPage(displayEmployee),
+            ],
+          ),
           floatingActionButton: FloatingActionButton(
             elevation: 6,
             backgroundColor: primaryColor,
