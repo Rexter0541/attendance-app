@@ -148,10 +148,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
               height: 300,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF4F46E5).withOpacity(0.08),
+                color: const Color(0xFF4F46E5).withAlpha(28),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF4F46E5).withOpacity(0.08),
+                    color: const Color(0xFF4F46E5).withAlpha(28),
                     blurRadius: 100,
                     spreadRadius: 40,
                   ),
@@ -168,10 +168,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
               height: 200,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF818CF8).withOpacity(0.08),
+                color: const Color(0xFF818CF8).withAlpha(28),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF818CF8).withOpacity(0.08),
+                    color: const Color(0xFF818CF8).withAlpha(28),
                     blurRadius: 80,
                     spreadRadius: 30,
                   ),

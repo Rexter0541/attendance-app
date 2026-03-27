@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -24,7 +23,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   String? imageUrl;
   
-  // Dynamic Profile Data (Default values while loading)
+  // Dynamic Profile Data
   String _name = '';
   String _employeeIdDisplay = 'Loading...';
   String _email = 'Loading...';
@@ -33,7 +32,11 @@ class _ProfilePageState extends State<ProfilePage> {
   String _emergencyName = 'Loading...';
   String _emergencyRelation = 'Loading...';
 
-  // Firebase and Supabase clients
+  // Admin-Managed Employment Data (Fetches from DB, Read-Only in UI)
+  String _employmentStatus = 'Loading...';
+  String _workSchedule = 'Loading...';
+  String _supervisor = 'Loading...';
+
   final supabase = Supabase.instance.client;
   final _firebaseAuth = FirebaseAuth.instance;
   final _firestore = FirebaseFirestore.instance;
@@ -45,16 +48,11 @@ class _ProfilePageState extends State<ProfilePage> {
     _loadUserProfile();
   }
 
-  /// Fetches the user's profile from Firestore to load the existing image URL.
   Future<void> _loadUserProfile() async {
     final user = _firebaseAuth.currentUser;
-    if (user == null) {
-      debugPrint('No Firebase user logged in, cannot load profile.');
-      return;
-    }
+    if (user == null) return;
 
     try {
-      // Use 'employees' collection to match other pages
       final docSnap = await _firestore.collection('employees').doc(user.uid).get();
       if (docSnap.exists) {
         final data = docSnap.data()!;
@@ -63,11 +61,10 @@ class _ProfilePageState extends State<ProfilePage> {
             if (data.containsKey('imageUrl')) imageUrl = data['imageUrl'];
             if (data.containsKey('name')) _name = data['name'];
             
-            // Load dynamic fields or use defaults if missing
+            // Employee ID handling
             if (data['employeeId'] != null) {
               _employeeIdDisplay = data['employeeId'];
             } else {
-              // Generate ID if missing, then save to Firestore automatically
               _employeeIdDisplay = 'EMP-${user.uid.substring(0, 5).toUpperCase()}';
               _firestore.collection('employees').doc(user.uid).set({
                 'employeeId': _employeeIdDisplay
@@ -79,110 +76,57 @@ class _ProfilePageState extends State<ProfilePage> {
             _office = data['office'] ?? 'Main Headquarters';
             _emergencyName = data['emergencyContactName'] ?? 'None';
             _emergencyRelation = data['emergencyContactRelation'] ?? 'None';
+            
+            // Fetching fields intended for Admin Update
+            _employmentStatus = data['employmentStatus'] ?? 'Pending...';
+            _workSchedule = data['workSchedule'] ?? 'TBD';
+            _supervisor = data['supervisor'] ?? 'None Assigned';
           });
-          debugPrint('User profile image loaded from Firestore.');
         }
       }
     } catch (e) {
-      debugPrint('Error loading user profile from Firestore: $e');
+      debugPrint('Error loading user profile: $e');
     }
   }
 
   Future<void> pickAndUploadImage() async {
-    // Ensure the widget is still in the tree.
     if (!mounted) return;
-
     final user = _firebaseAuth.currentUser;
-    if (user == null) {
-      debugPrint('Cannot upload: No user is logged in.');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('You must be logged in to upload an image.')),
-        );
-      }
-      return;
-    }
+    if (user == null) return;
 
-    debugPrint('Sinusubukang pumili at mag-upload ng imahe...');
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-
-    if (pickedFile == null) {
-      debugPrint('Walang napiling imahe. Kinakansela ang pag-upload.');
-      return;
-    }
-
-    if (!mounted) return;
-
-    debugPrint('Napiling imahe: ${pickedFile.name}');
+    if (pickedFile == null) return;
 
     final fileName = DateTime.now().millisecondsSinceEpoch.toString();
     final fileExt = pickedFile.name.split('.').last;
     final filePath = '$fileName.$fileExt';
 
     try {
-      debugPrint('Nagsisimulang mag-upload sa Supabase storage...');
       final bytes = await pickedFile.readAsBytes();
       await supabase.storage
           .from('employee-profile')
           .uploadBinary(filePath, bytes, fileOptions: FileOptions(contentType: pickedFile.mimeType ?? 'image/jpeg'));
-      debugPrint('Tagumpay ang pag-upload. File path: $filePath');
 
-      final publicUrl =
-          supabase.storage.from('employee-profile').getPublicUrl(filePath);
-      debugPrint('Nakuha ang public URL: $publicUrl');
-      
-      // Save the new URL to Firestore and update the local state
+      final publicUrl = supabase.storage.from('employee-profile').getPublicUrl(filePath);
       await _updateUserProfileImageUrl(publicUrl);
-
-    } on StorageException catch (e) {
-      debugPrint('Supabase Storage Error: ${e.message}');
-      if (mounted) {
-        final msg = e.statusCode == '404' ? 'Bucket "employee-profile" missing in Supabase.' : 'Storage Error: ${e.message}';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
-      }
     } catch (e) {
-      debugPrint('Nagkaroon ng error habang nag-a-upload: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e')),
-        );
-      }
+      debugPrint('Upload failed: $e');
     }
   }
 
-  /// Saves the new image URL to the user's document in Firestore.
   Future<void> _updateUserProfileImageUrl(String newUrl) async {
     final user = _firebaseAuth.currentUser;
-    
-    // 1. Optimistic Update: I-update agad ang UI para makita ng user ang bagong image
-    //    kahit naglo-loading pa o offline ang Firestore.
     if (mounted) {
       setState(() => imageUrl = newUrl);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile image updated successfully')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile image updated successfully')));
     }
-
     if (user == null) return;
-
-    try {
-      // 2. I-save sa Firestore (Background sync)
-      await _firestore.collection('employees').doc(user.uid).set({
-        'imageUrl': newUrl,
-      }, SetOptions(merge: true)); // Use merge to avoid overwriting other fields
-      debugPrint('Image URL saved to Firestore.');
-    } catch (e) {
-      debugPrint('Error saving image URL to Firestore: $e');
-      // Note: Kahit mag-fail ang save (e.g. offline), nakita na ng user ang image sa session na ito.
-      // Sa susunod na restart na lang ulit susubukang i-fetch kung may connection na.
-    }
+    await _firestore.collection('employees').doc(user.uid).set({'imageUrl': newUrl}, SetOptions(merge: true));
   }
 
-  /// Opens a dialog to edit a specific text field and saves it to Firestore.
   Future<void> _editField(String title, String fieldKey, String currentValue) async {
     final TextEditingController controller = TextEditingController(text: currentValue);
-
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -190,21 +134,14 @@ class _ProfilePageState extends State<ProfilePage> {
         title: Text('Edit $title'),
         content: TextField(
           controller: controller,
-          decoration: InputDecoration(
-            labelText: 'Enter new $title',
-            border: const OutlineInputBorder(),
-          ),
+          decoration: InputDecoration(labelText: 'Enter new $title', border: const OutlineInputBorder()),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () async {
               final newValue = controller.text.trim();
-              Navigator.pop(context); // Close dialog
-
+              Navigator.pop(context);
               if (newValue.isNotEmpty && newValue != currentValue) {
                 await _saveProfileField(fieldKey, newValue);
               }
@@ -220,212 +157,132 @@ class _ProfilePageState extends State<ProfilePage> {
   Future<void> _saveProfileField(String fieldKey, String newValue) async {
     final user = _firebaseAuth.currentUser;
     if (user == null) return;
-
     await _firestore.collection('employees').doc(user.uid).set({fieldKey: newValue}, SetOptions(merge: true));
-    _loadUserProfile(); // Refresh UI
+    _loadUserProfile(); 
   }
 
-  /// Shows a dialog to change the password with re-authentication.
   Future<void> _showChangePasswordDialog() async {
     final TextEditingController currentPassController = TextEditingController();
     final TextEditingController newPassController = TextEditingController();
     final TextEditingController confirmPassController = TextEditingController();
 
-    // Default visibility states (true = hidden)
     bool obscureCurrent = true;
     bool obscureNew = true;
     bool obscureConfirm = true;
 
-await showDialog(
-  context: context,
-  builder: (dialogContext) { // Renamed to dialogContext to avoid confusion
-    return StatefulBuilder(builder: (context, setState) {
-      return AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: const Text('Change Password'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'For security, please enter your current password.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-              const SizedBox(height: 15),
-              TextField(
-                controller: currentPassController,
-                obscureText: obscureCurrent,
-                decoration: InputDecoration(
-                  labelText: 'Current Password',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: Icon(obscureCurrent
-                        ? Icons.visibility_off
-                        : Icons.visibility),
-                    onPressed: () => setState(() => obscureCurrent = !obscureCurrent),
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(builder: (context, setState) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            title: const Text('Change Password'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Enter your current password to proceed.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: currentPassController,
+                    obscureText: obscureCurrent,
+                    decoration: InputDecoration(
+                      labelText: 'Current Password',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureCurrent ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setState(() => obscureCurrent = !obscureCurrent),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 15),
-              TextField(
-                controller: newPassController,
-                obscureText: obscureNew,
-                decoration: InputDecoration(
-                  labelText: 'New Password',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: Icon(obscureNew
-                        ? Icons.visibility_off
-                        : Icons.visibility),
-                    onPressed: () => setState(() => obscureNew = !obscureNew),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: newPassController,
+                    obscureText: obscureNew,
+                    decoration: InputDecoration(
+                      labelText: 'New Password',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureNew ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setState(() => obscureNew = !obscureNew),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 15),
-              TextField(
-                controller: confirmPassController,
-                obscureText: obscureConfirm,
-                decoration: InputDecoration(
-                  labelText: 'Confirm New Password',
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: Icon(obscureConfirm
-                        ? Icons.visibility_off
-                        : Icons.visibility),
-                    onPressed: () => setState(() => obscureConfirm = !obscureConfirm),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: confirmPassController,
+                    obscureText: obscureConfirm,
+                    decoration: InputDecoration(
+                      labelText: 'Confirm New Password',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureConfirm ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () => setState(() => obscureConfirm = !obscureConfirm),
+                      ),
+                    ),
                   ),
-                ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+              ElevatedButton(
+                onPressed: () async {
+                  if (newPassController.text != confirmPassController.text) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Passwords do not match')));
+                    return;
+                  }
+                  try {
+                    final user = FirebaseAuth.instance.currentUser;
+                    if (user != null && user.email != null) {
+                      final cred = EmailAuthProvider.credential(email: user.email!, password: currentPassController.text);
+                      await user.reauthenticateWithCredential(cred);
+                      await user.updatePassword(newPassController.text);
+                      if (!context.mounted) return;
+                      Navigator.pop(dialogContext);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password updated!')));
+                    }
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+                  }
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: ProfilePage.primaryColor, foregroundColor: Colors.white),
+                child: const Text('Update'),
               ),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (newPassController.text != confirmPassController.text) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('New passwords do not match')),
-                );
-                return;
-              }
-
-              try {
-                final user = FirebaseAuth.instance.currentUser;
-                if (user != null && user.email != null) {
-                  final cred = EmailAuthProvider.credential(
-                    email: user.email!,
-                    password: currentPassController.text,
-                  );
-
-                  // Re-authenticate
-                  await user.reauthenticateWithCredential(cred);
-                  
-                  // Update Password
-                  await user.updatePassword(newPassController.text);
-
-                  // ✅ FIX: Check if context is still mounted after async awaits
-                  if (!context.mounted) return;
-
-                  Navigator.pop(dialogContext);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Password updated successfully!')),
-                  );
-                }
-              } on FirebaseAuthException catch (e) {
-                // ✅ FIX: Check if context is still mounted before showing error SnackBar
-                if (!context.mounted) return;
-                
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(e.message ?? 'Error updating password')),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: ProfilePage.primaryColor,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Update'),
-          ),
-        ],
-      );
-    });
-  },
-);
+          );
+        });
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true, // Para umabot ang gradient sa status bar
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        automaticallyImplyLeading: false, // Don't show back button on main tab
-        title: const Text('My Profile',
-            style: TextStyle(
-                color: ProfilePage.textColor, fontWeight: FontWeight.bold)),
+        automaticallyImplyLeading: false,
+        title: const Text('My Profile', style: TextStyle(color: ProfilePage.textColor, fontWeight: FontWeight.bold)),
       ),
       body: Stack(
         children: [
-          // AMBIENT BACKGROUND LAYER
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [
-                  Color(0xFFF8F9FC), // Base white/grey
-                  Color(0xFFE0E7FF), // Very light indigo for premium feel
-                ],
+                colors: [Color(0xFFF8F9FC), Color(0xFFE0E7FF)],
               ),
             ),
           ),
-          // Glowing Blobs (Ambience)
-          Positioned(
-            top: -100,
-            right: -100,
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF4F46E5).withOpacity(0.1),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF4F46E5).withOpacity(0.1),
-                    blurRadius: 100,
-                    spreadRadius: 50,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 50,
-            left: -50,
-            child: Container(
-              width: 200,
-              height: 200,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF818CF8).withOpacity(0.1),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF818CF8).withOpacity(0.1),
-                    blurRadius: 80,
-                    spreadRadius: 40,
-                  ),
-                ],
-              ),
-            ),
-          ),
+          // Ambience Blobs
+          Positioned(top: -100, right: -100, child: _buildBlurCircle(300, const Color(0xFF4F46E5))),
+          Positioned(bottom: 50, left: -50, child: _buildBlurCircle(200, const Color(0xFF818CF8))),
 
-          // MAIN CONTENT
           SafeArea(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -434,81 +291,77 @@ await showDialog(
                 children: [
                   _buildProfileHeader(),
                   const SizedBox(height: 25),
+                  
                   _buildSectionContainer('Personal Information', [
                     _buildProfileItem(Icons.badge_outlined, 'Employee ID', _employeeIdDisplay),
                     _buildDivider(),
                     _buildProfileItem(Icons.email_outlined, 'Email', _email),
                     _buildDivider(),
                     _buildProfileItem(Icons.phone_android_outlined, 'Phone', _phone,
-                        canEdit: true,
-                        onTap: () => _editField('Phone', 'phone', _phone)),
+                        canEdit: true, onTap: () => _editField('Phone', 'phone', _phone)),
                     _buildDivider(),
                     _buildProfileItem(Icons.location_on_outlined, 'Office', _office,
-                        canEdit: true,
-                        onTap: () => _editField('Office', 'office', _office)),
+                        canEdit: true, onTap: () => _editField('Office', 'office', _office)),
                   ]),
+                  
                   const SizedBox(height: 20),
+                  
+                  // Employment Section - DATA FETCHED FROM DB but NOT EDITABLE by user
                   _buildSectionContainer('Employment', [
-                    _buildProfileItem(
-                        Icons.work_outline, 'Employment Status', 'Full-Time Regular'),
+                    _buildProfileItem(Icons.work_outline, 'Employment Status', _employmentStatus, canEdit: false),
                     _buildDivider(),
-                    _buildProfileItem(
-                        Icons.schedule, 'Work Schedule', '08:00 AM - 05:00 PM'),
+                    _buildProfileItem(Icons.schedule, 'Work Schedule', _workSchedule, canEdit: false),
                     _buildDivider(),
-                    _buildProfileItem(Icons.supervisor_account_outlined,
-                        'Immediate Supervisor', 'Engr. Ayro'),
+                    _buildProfileItem(Icons.supervisor_account_outlined, 'Immediate Supervisor', _supervisor, canEdit: false),
                   ]),
+                  
                   const SizedBox(height: 20),
+                  
                   _buildSectionContainer('Emergency Contact', [
-                    _buildProfileItem(
-                        Icons.contact_phone_outlined, 'Contact Person', _emergencyName,
-                        canEdit: true,
-                        onTap: () => _editField('Contact Person',
-                            'emergencyContactName', _emergencyName)),
+                    _buildProfileItem(Icons.contact_phone_outlined, 'Contact Person', _emergencyName,
+                        canEdit: true, onTap: () => _editField('Contact Person', 'emergencyContactName', _emergencyName)),
                     _buildDivider(),
-                    _buildProfileItem(
-                        Icons.family_restroom, 'Relationship', _emergencyRelation,
-                        canEdit: true,
-                        onTap: () => _editField('Relationship',
-                            'emergencyContactRelation', _emergencyRelation)),
+                    _buildProfileItem(Icons.family_restroom, 'Relationship', _emergencyRelation,
+                        canEdit: true, onTap: () => _editField('Relationship', 'emergencyContactRelation', _emergencyRelation)),
                   ]),
+                  
                   const SizedBox(height: 20),
+                  
                   _buildSectionContainer('Settings & Security', [
-                    _buildMenuOption(Icons.lock_outline, 'Change Password',
-                        onTap: _showChangePasswordDialog),
+                    _buildMenuOption(Icons.lock_outline, 'Change Password', onTap: _showChangePasswordDialog),
                     _buildDivider(),
-                    _buildMenuOption(
-                      Icons.notifications_none_outlined,
-                      'Notifications',
-                      onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => NotificationsPage(
-                                  employee: widget.employee))),
-                    ),
+                    _buildMenuOption(Icons.notifications_none_outlined, 'Notifications', 
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPage(employee: widget.employee)))),
                     _buildDivider(),
-                    _buildMenuOption(
-                      Icons.video_call_outlined,
-                      'Online Meeting',
-                      onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (_) => MeetingPage(employee: widget.employee))),
-                    ),
+                    _buildMenuOption(Icons.video_call_outlined, 'Online Meeting', 
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MeetingPage(employee: widget.employee)))),
                   ]),
+                  
                   const SizedBox(height: 20),
+                  
                   _buildSectionContainer('Support', [
                     _buildMenuOption(Icons.help_outline, 'Help Center'),
                     _buildDivider(),
                     _buildMenuOption(Icons.privacy_tip_outlined, 'Privacy Policy'),
                     _buildDivider(),
-                    _buildMenuOption(Icons.info_outline, 'App Version',
-                        trailing: 'v1.0.0'),
+                    _buildMenuOption(Icons.info_outline, 'App Version', trailing: 'v1.0.0'),
                   ]),
                 ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildBlurCircle(double size, Color color) {
+    return Container(
+      width: size, height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withAlpha(28),
+        boxShadow: [BoxShadow(color: color.withAlpha(28), blurRadius: 100, spreadRadius: 50)],
       ),
     );
   }
@@ -518,19 +371,9 @@ await showDialog(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF4F46E5), Color(0xFF818CF8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        gradient: const LinearGradient(colors: [Color(0xFF4F46E5), Color(0xFF818CF8)], begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF4F46E5).withAlpha(16),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: const Color(0xFF4F46E5).withAlpha(16), blurRadius: 20, offset: const Offset(0, 10))],
       ),
       child: Column(
         children: [
@@ -539,78 +382,22 @@ await showDialog(
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                _name,
-                style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white),
-              ),
+              Text(_name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
               const SizedBox(width: 8),
               GestureDetector(
                 onTap: () => _editField('Name', 'name', _name),
                 child: Container(
                   padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(51), // 20% opacity
-                    shape: BoxShape.circle,
-                  ),
+                  decoration: BoxDecoration(color: Colors.white.withAlpha(51), shape: BoxShape.circle),
                   child: const Icon(Icons.edit, size: 14, color: Colors.white),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 4),
-          Text(
-            'Health Officer', // Or widget.employee.role if available
-            style: TextStyle(
-                fontSize: 14, color: Colors.white.withAlpha(230)),
-          ),
+          Text('Health Officer', style: TextStyle(fontSize: 14, color: Colors.white.withAlpha(230))),
         ],
       ),
-    );
-  }
-
-  Widget _buildSectionContainer(String title, List<Widget> children) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 4, bottom: 8),
-          child: Text(
-            title.toUpperCase(),
-            style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey,
-                letterSpacing: 1.0),
-          ),
-        ),
-        Container(
-          decoration: BoxDecoration(
-            color: ProfilePage.cardColor,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(28),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Column(children: children),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDivider() {
-    return Divider(
-      height: 1,
-      thickness: 1,
-      color: Colors.grey.shade100,
-      indent: 16,
-      endIndent: 16,
     );
   }
 
@@ -621,40 +408,33 @@ await showDialog(
         children: [
           Container(
             padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withAlpha(128), width: 2),
-            ),
+            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white.withAlpha(128), width: 2)),
             child: CircleAvatar(
               radius: 50,
-              backgroundColor: Colors.white.withAlpha(51), // 20% opacity
-              backgroundImage:
-                  imageUrl != null ? NetworkImage(imageUrl!) : null,
-              child: imageUrl == null
-                  ? const Icon(Icons.person, size: 50, color: Colors.white)
-                  : null,
+              backgroundColor: Colors.white.withAlpha(51),
+              backgroundImage: imageUrl != null ? NetworkImage(imageUrl!) : null,
+              child: imageUrl == null ? const Icon(Icons.person, size: 50, color: Colors.white) : null,
             ),
           ),
-          Positioned(
-            bottom: 0,
-            right: 0,
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.camera_alt,
-                  size: 16, color: ProfilePage.primaryColor),
-            ),
-          ),
+          Positioned(bottom: 0, right: 0, child: Container(padding: const EdgeInsets.all(8), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), child: const Icon(Icons.camera_alt, size: 16, color: ProfilePage.primaryColor))),
         ],
       ),
     );
   }
 
-  Widget _buildProfileItem(IconData icon, String label, String value,
-      {bool canEdit = false, VoidCallback? onTap}) {
+  Widget _buildSectionContainer(String title, List<Widget> children) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(padding: const EdgeInsets.only(left: 4, bottom: 8), child: Text(title.toUpperCase(), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey, letterSpacing: 1.0))),
+        Container(decoration: BoxDecoration(color: ProfilePage.cardColor, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withAlpha(28), blurRadius: 10, offset: const Offset(0, 4))]), child: Column(children: children)),
+      ],
+    );
+  }
+
+  Widget _buildDivider() => Divider(height: 1, thickness: 1, color: Colors.grey.shade100, indent: 16, endIndent: 16);
+
+  Widget _buildProfileItem(IconData icon, String label, String value, {bool canEdit = false, VoidCallback? onTap}) {
     return InkWell(
       onTap: canEdit ? onTap : null,
       borderRadius: BorderRadius.circular(16),
@@ -662,42 +442,17 @@ await showDialog(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                  color: ProfilePage.primaryColor.withAlpha(26), // 10% opacity
-                  borderRadius: BorderRadius.circular(12)),
-              child: Icon(icon, size: 20, color: ProfilePage.primaryColor),
-            ),
+            Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: ProfilePage.primaryColor.withAlpha(26), borderRadius: BorderRadius.circular(12)), child: Icon(icon, size: 20, color: ProfilePage.primaryColor)),
             const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label,
-                      style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey)),
-                  const SizedBox(height: 2),
-                  Text(value,
-                      style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: ProfilePage.textColor)),
-                ],
-              ),
-            ),
-            if (canEdit)
-              const Icon(Icons.edit_note,
-                  size: 24, color: Colors.grey),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)), const SizedBox(height: 2), Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: ProfilePage.textColor))])),
+            if (canEdit) const Icon(Icons.edit_note, size: 24, color: Colors.grey),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildMenuOption(IconData icon, String title,
-      {String? trailing, VoidCallback? onTap}) {
+  Widget _buildMenuOption(IconData icon, String title, {String? trailing, VoidCallback? onTap}) {
     return InkWell(
       onTap: onTap ?? () {},
       borderRadius: BorderRadius.circular(16),
@@ -707,32 +462,10 @@ await showDialog(
           children: [
             Icon(icon, size: 22, color: ProfilePage.textColor),
             const SizedBox(width: 15),
-            Expanded(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w500,
-                  color: ProfilePage.textColor,
-                ),
-              ),
-            ),
-            if (trailing != null)
-              Text(
-                trailing,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: ProfilePage.primaryColor,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: ProfilePage.textColor))),
+            if (trailing != null) Text(trailing, style: const TextStyle(fontSize: 13, color: ProfilePage.primaryColor, fontWeight: FontWeight.bold)),
             const SizedBox(width: 5),
-            // Added 'const' here to fix the diagnostic error
-            const Icon(
-              Icons.arrow_forward_ios,
-              size: 14,
-              color: Colors.black26,
-            ),
+            const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.black26),
           ],
         ),
       ),

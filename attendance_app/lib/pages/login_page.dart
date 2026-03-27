@@ -62,14 +62,26 @@ class _LoginPageState extends State<LoginPage> {
       String uid = credential.user!.uid;
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
+      // Get Device Info for Logging
       String deviceName = await _getDeviceName();
-      await prefs.setString('deviceName', deviceName);
-      await prefs.setInt('last_action_timestamp', DateTime.now().millisecondsSinceEpoch);
+      DateTime now = DateTime.now();
 
-      // Check Admin
+      // Data to sync to Firestore
+      Map<String, dynamic> loginData = {
+        'lastLoginDate': Timestamp.fromDate(now),
+        'lastLoginDevice': deviceName,
+      };
+
+      await prefs.setString('deviceName', deviceName);
+      await prefs.setInt('last_action_timestamp', now.millisecondsSinceEpoch);
+
+      // --- CHECK ADMIN COLLECTION ---
       DocumentSnapshot adminDoc = await FirebaseFirestore.instance.collection('Admin').doc(uid).get();
 
       if (adminDoc.exists) {
+        // Update Admin's login info in Firestore
+        await FirebaseFirestore.instance.collection('Admin').doc(uid).update(loginData);
+
         await prefs.setBool('isLoggedIn', true);
         await prefs.setString('userId', uid);
         await prefs.setString('userName', adminDoc.get('name') ?? 'Administrator');
@@ -80,10 +92,13 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      // Check Employees
+      // --- CHECK EMPLOYEES COLLECTION ---
       DocumentSnapshot employeeDoc = await FirebaseFirestore.instance.collection('employees').doc(uid).get();
 
       if (employeeDoc.exists) {
+        // Update Employee's login info in Firestore
+        await FirebaseFirestore.instance.collection('employees').doc(uid).update(loginData);
+
         String name = employeeDoc.get('name') ?? 'Employee';
         String role = (employeeDoc.get('role') ?? 'employee').toString().toLowerCase();
 

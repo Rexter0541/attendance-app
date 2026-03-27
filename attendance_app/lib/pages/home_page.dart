@@ -739,10 +739,10 @@ class _HomePageState extends State<HomePage> {
                   height: 300,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: primaryColor.withOpacity(0.08),
+                    color: primaryColor.withAlpha(28),
                     boxShadow: [
                       BoxShadow(
-                        color: primaryColor.withOpacity(0.08),
+                        color: primaryColor.withAlpha(28),
                         blurRadius: 100,
                         spreadRadius: 40,
                       ),
@@ -759,10 +759,10 @@ class _HomePageState extends State<HomePage> {
                   height: 200,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFF818CF8).withOpacity(0.08),
+                    color: const Color(0xFF818CF8).withAlpha(28),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF818CF8).withOpacity(0.08),
+                        color: const Color(0xFF818CF8).withAlpha(28),
                         blurRadius: 80,
                         spreadRadius: 30,
                       ),
