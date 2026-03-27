@@ -125,10 +125,31 @@ class _VerificationPageState extends State<VerificationPage> {
       setState(() {
         userPosition = result.position;
         distanceFromOffice = result.distance;
-        inRange = result.inRange;
       });
 
       _addLog('Distance from office: ${distanceFromOffice.toStringAsFixed(2)} meters');
+
+      if (!result.isAccurate) {
+        _addLog('SIGNAL WEAK: Accuracy is ${result.position.accuracy.toStringAsFixed(1)}m');
+        _showErrorDialog(
+          'Weak GPS Signal',
+          'Your location is too imprecise. Please move to an area with a clear view of the sky.',
+          onRetry: () => _checkGPS(),
+        );
+        return;
+      }
+
+      // Hardening: Check for Mock Locations (GPS Spoofing)
+      if (userPosition?.isMocked ?? false) {
+        _addLog('SECURITY ALERT: MOCK LOCATION DETECTED 🛡️');
+        _showErrorDialog(
+          'Security Violation',
+          'Mock location apps are not allowed. Please disable them to continue.',
+        );
+        return;
+      }
+
+      setState(() => inRange = result.inRange);
 
       if (!inRange) {
         _addLog('STATUS: OUT OF RANGE ❌');
@@ -171,8 +192,9 @@ class _VerificationPageState extends State<VerificationPage> {
     }
 
     _addLog('Decrypting QR Signature...');
-    bool isValid = await _verifyQRWithFirebase(scannedValue);
-
+    // Suggestion: Use a separate service for this to keep the UI clean
+    bool isValid = await _verifyQRWithFirebase(scannedValue); 
+    
     if (isValid) {
       _updateProgress(0.66);
       setState(() => currentStep = 1);
