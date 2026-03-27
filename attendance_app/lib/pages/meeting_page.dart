@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:jitsi_meet_flutter_sdk/jitsi_meet_flutter_sdk.dart';
@@ -23,7 +22,7 @@ class _MeetingPageState extends State<MeetingPage> {
   final Color primaryColor = const Color(0xFF4F46E5);
 
   final _jitsiMeetPlugin = JitsiMeet();
-  
+
   // Tracking variables
   String? _currentLogId;
   DateTime? _joinTime;
@@ -44,12 +43,12 @@ class _MeetingPageState extends State<MeetingPage> {
     try {
       String roomCode = _roomController.text.trim().toLowerCase();
       String password = _passwordController.text.trim();
-      
+
       if (isCreating) {
         setState(() => _isGeneratingCode = true);
         roomCode = _generateMeetingCode();
         _roomController.text = roomCode;
-        
+
         // Save to Firestore as an active meeting
         await _firestore.collection('active_meetings').doc(roomCode).set({
           'hostId': widget.employee.id,
@@ -57,25 +56,29 @@ class _MeetingPageState extends State<MeetingPage> {
           'createdAt': FieldValue.serverTimestamp(),
           'password': password,
         });
+
+        if (!mounted) return; // Guard for state update after async Firestore call
         setState(() => _isGeneratingCode = false);
       }
 
       if (roomCode.isEmpty) {
+        if (!mounted) return; // Guard for BuildContext across async gap
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Mangyaring maglagay ng Meeting Code')),
         );
         return;
       }
 
-      String finalRoomName = "LGU_Meet_$roomCode";
+      String finalRoomName = 'LGU_Meet_$roomCode'; // Fixed: prefer_single_quotes
 
       // Check if platform is supported
       if (kIsWeb) {
         debugPrint('Log: Running on Web. Launching browser tab...');
-        
+
         final String encodedName = Uri.encodeComponent(widget.employee.name);
-        final String webUrl = 'https://meet.jit.si/$finalRoomName#userInfo.displayName="$encodedName"&config.prejoinPageEnabled=false&config.disableDeepLinking=true';
-        
+        final String webUrl =
+            'https://meet.jit.si/$finalRoomName#userInfo.displayName="$encodedName"&config.prejoinPageEnabled=false&config.disableDeepLinking=true';
+
         final Uri url = Uri.parse(webUrl);
         if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
           throw Exception('Could not launch $url');
@@ -86,7 +89,7 @@ class _MeetingPageState extends State<MeetingPage> {
       debugPrint('Log: Attempting to join: "$finalRoomName"');
 
       var options = JitsiMeetConferenceOptions(
-        serverURL: "https://meet.jit.si", // Default Jitsi server
+        serverURL: 'https://meet.jit.si', // Fixed: prefer_single_quotes
         room: finalRoomName,
         configOverrides: {
           'startWithAudioMuted': true,
@@ -94,53 +97,48 @@ class _MeetingPageState extends State<MeetingPage> {
           if (password.isNotEmpty) 'password': password,
         },
         userInfo: JitsiMeetUserInfo(
-          displayName: widget.employee.name, // Feature 3: Auth Tie-in
-          email: widget.employee.id, // Gamitin ang ID para sa internal tracking
+          displayName: widget.employee.name,
+          email: widget.employee.id,
         ),
       );
 
-    // 2. Join/Leave Tracking Logic (Feature 1)
-    await _jitsiMeetPlugin.join(
-      options,
-      JitsiMeetEventListener(
-        conferenceJoined: (url) async{
-        _joinTime = DateTime.now();
-        debugPrint('Log: User joined meeting. Logging to Firestore...');
+      await _jitsiMeetPlugin.join(
+        options,
+        JitsiMeetEventListener(
+          conferenceJoined: (url) async {
+            _joinTime = DateTime.now();
+            debugPrint('Log: User joined meeting. Logging to Firestore...');
 
-        final docRef = await _firestore.collection('meeting_logs').add({
-          'employeeId': widget.employee.id,
-          'employeeName': widget.employee.name,
-          'roomName': finalRoomName,
-          'joinTime': FieldValue.serverTimestamp(),
-          'leaveTime': null,
-          'durationMinutes': 0,
-          'status': 'In-Progress',
-        });
-        _currentLogId = docRef.id;
-      },
-        conferenceTerminated: (url, error) async{
-        if (_currentLogId != null && _joinTime != null) {
-          final leaveTime = DateTime.now();
-          final duration = leaveTime.difference(_joinTime!).inMinutes;
+            final docRef = await _firestore.collection('meeting_logs').add({
+              'employeeId': widget.employee.id,
+              'employeeName': widget.employee.name,
+              'roomName': finalRoomName,
+              'joinTime': FieldValue.serverTimestamp(),
+              'leaveTime': null,
+              'durationMinutes': 0,
+              'status': 'In-Progress', // Fixed: prefer_single_quotes
+            });
+            _currentLogId = docRef.id;
+          },
+          conferenceTerminated: (url, error) async {
+            if (_currentLogId != null && _joinTime != null) {
+              final leaveTime = DateTime.now();
+              final duration = leaveTime.difference(_joinTime!).inMinutes;
 
-          debugPrint('Log: Meeting terminated. Duration: $duration mins');
+              debugPrint('Log: Meeting terminated. Duration: $duration mins');
 
-          await _firestore.collection('meeting_logs').doc(_currentLogId).update({
-            'leaveTime':
-            FieldValue.serverTimestamp(),
-            'durationMinutes': duration,
-            'status': duration >=
-                minMinutesForPresence
-                ? 'Present'
-                : 'Short Stay',
-          });
-        }
-      },
-      ),
-    );
-
+              await _firestore.collection('meeting_logs').doc(_currentLogId).update({
+                'leaveTime': FieldValue.serverTimestamp(),
+                'durationMinutes': duration,
+                'status': duration >= minMinutesForPresence ? 'Present' : 'Short Stay',
+              });
+            }
+          },
+        ),
+      );
     } catch (e) {
       debugPrint('Jitsi Error: $e');
+      if (!mounted) return; // Guard for BuildContext across async gap
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
@@ -248,7 +246,7 @@ class _MeetingPageState extends State<MeetingPage> {
                         child: const Text('Create Meeting', style: TextStyle(fontSize: 16)),
                       ),
                     ),
-                    const SizedBox(width: 12), // Space between buttons
+                    const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton(
                         onPressed: () => _startOrJoinMeeting(isCreating: false),
