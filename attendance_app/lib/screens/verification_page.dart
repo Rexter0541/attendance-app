@@ -1,17 +1,16 @@
 // ignore_for_file: unused_import
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart'; 
-import 'package:flutter/services.dart';  
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart'; // This covers foundation and services
 import 'package:geolocator/geolocator.dart';
 import 'package:camera/camera.dart'; 
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart'; 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; 
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:device_info_plus/device_info_plus.dart'; // Added for technical detection
+import 'package:device_info_plus/device_info_plus.dart'; 
 
 import '../models/attendance_session.dart';
 import '../models/employee.dart';
@@ -21,24 +20,10 @@ import '../pages/home_page.dart';
 import '../services/attendance_service.dart';
 import '../services/location_service.dart';
 import '../pages/qr_scanner_page.dart';
-
-// Helper function to get technical hardware/browser info
-Future<String> _getTechnicalDeviceName() async {
-  DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-  
-  if (kIsWeb) {
-    WebBrowserInfo webInfo = await deviceInfo.webBrowserInfo;
-    // Captures: "CHROME on Win32" or "SAFARI on MacIntel"
-    return '${webInfo.browserName.name.toUpperCase()} on ${webInfo.platform}';
-  } else if (Platform.isAndroid) {
-    AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-    return '${androidInfo.manufacturer.toUpperCase()} ${androidInfo.model}';
-  } else if (Platform.isIOS) {
-    IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
-    return 'APPLE ${iosInfo.utsname.machine}';
-  }
-  return 'UNKNOWN SYSTEM';
-}
+import '../services/security_service.dart';
+// Added these to link the files correctly:
+import '../utils/device_utils.dart';
+import '../services/face_service.dart';
 
 class VerificationPage extends StatefulWidget {
   final Employee employee;
@@ -52,6 +37,9 @@ class VerificationPage extends StatefulWidget {
 class _VerificationPageState extends State<VerificationPage> {
   final AttendanceService attendanceService = AttendanceService();
   final LocationService locationService = LocationService();
+
+  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
+  bool _isOnline = true;
 
   final FaceDetector _faceDetector = FaceDetector(
     options: FaceDetectorOptions(
@@ -75,16 +63,27 @@ class _VerificationPageState extends State<VerificationPage> {
   @override
   void initState() {
     super.initState();
+    
+    // Monitor Network Awareness
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+      final bool isConnected = !results.contains(ConnectivityResult.none);
+      if (_isOnline != isConnected) {
+        setState(() => _isOnline = isConnected);
+        _addLog(_isOnline ? 'Network restored. 🌐' : 'Network lost! Check connection. ⚠️');
+      }
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _checkIfTimedIn();
       if (mounted) {
-        _checkGPS();
+        _startVerification();
       }
     });
   }
 
   @override
   void dispose() {
+    _connectivitySubscription.cancel();
     _progressTimer?.cancel();
     _faceDetector.close(); 
     super.dispose();
@@ -114,6 +113,25 @@ class _VerificationPageState extends State<VerificationPage> {
       if (!mounted) return;
       Navigator.pushReplacement(context, _createRoute(HomePage(employee: widget.employee)));
     }
+  }
+
+  Future<void> _startVerification() async {
+    _addLog('Initializing security protocols...');
+    
+    // Check for Time Manipulation (Anti-Cheat)
+    _addLog('Verifying system clock integrity...');
+    bool isSynced = await SecurityService.verifyTimeSync();
+    
+    if (!isSynced) {
+      _addLog('SECURITY ALERT: System clock mismatch ⚠️');
+      _showErrorDialog(
+        'Clock Inaccurate', 
+        'Your phone time does not match the server. Please set your time to "Automatic" in settings.',
+      );
+      return;
+    }
+
+    _checkGPS();
   }
 
   Future<void> _checkGPS() async {
@@ -192,8 +210,7 @@ class _VerificationPageState extends State<VerificationPage> {
     }
 
     _addLog('Decrypting QR Signature...');
-    // Suggestion: Use a separate service for this to keep the UI clean
-    bool isValid = await _verifyQRWithFirebase(scannedValue); 
+    bool isValid = await SecurityService.verifyQRWithFirebase(scannedValue); 
     
     if (isValid) {
       _updateProgress(0.66);
@@ -207,24 +224,6 @@ class _VerificationPageState extends State<VerificationPage> {
         'Incorrect or expired QR code.',
         onRetry: () => _initiateQRStep(),
       );
-    }
-  }
-
-  Future<bool> _verifyQRWithFirebase(String scannedValue) async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('settings')
-          .doc('attendance_config')
-          .get();
-
-      if (doc.exists) {
-        String serverSecret = (doc.data()?['qr_secret'] ?? '').toString().trim();
-        return scannedValue.trim() == serverSecret;
-      }
-      return false;
-    } catch (e) {
-      _addLog('Firebase Error: $e');
-      return false;
     }
   }
 
@@ -284,7 +283,7 @@ class _VerificationPageState extends State<VerificationPage> {
     _addLog('Securing technical identity...');
 
     // Detect technical hardware/browser signature
-    String deviceSignature = await _getTechnicalDeviceName();
+    String deviceSignature = await DeviceUtils.getTechnicalDeviceName();
     
     _addLog('IDENTIFIED: $deviceSignature');
     _addLog('Creating Attendance Session...');
@@ -516,24 +515,9 @@ class _LivenessCameraPageState extends State<LivenessCameraPage> {
     _isProcessing = true;
 
     try {
-      final WriteBuffer allBytes = WriteBuffer();
-      for (final Plane plane in image.planes) {
-        allBytes.putUint8List(plane.bytes);
-      }
-      final bytes = allBytes.done().buffer.asUint8List();
+      final inputImage = FaceService.convertCameraImage(image, _controller!.description);
+      if (inputImage == null) return;
 
-      final sensorOrientation = _controller!.description.sensorOrientation;
-      final rotation = InputImageRotationValue.fromRawValue(sensorOrientation) 
-                    ?? InputImageRotation.rotation270deg;
-
-      final metadata = InputImageMetadata(
-        size: Size(image.width.toDouble(), image.height.toDouble()),
-        rotation: rotation,
-        format: InputImageFormatValue.fromRawValue(image.format.raw) ?? InputImageFormat.nv21,
-        bytesPerRow: image.planes[0].bytesPerRow,
-      );
-
-      final inputImage = InputImage.fromBytes(bytes: bytes, metadata: metadata);
       final faces = await widget.faceDetector.processImage(inputImage);
 
       if (faces.isEmpty) {
@@ -545,7 +529,7 @@ class _LivenessCameraPageState extends State<LivenessCameraPage> {
         }
       } else {
         final face = faces.first;
-        final double? headY = face.headEulerAngleY; 
+        final double? headY = FaceService.getHeadRotation(face); 
         
         if (mounted) {
           setState(() {
@@ -580,7 +564,7 @@ class _LivenessCameraPageState extends State<LivenessCameraPage> {
         }
 
         if (_currentStep == LivenessStep.smile) {
-          bool isSmiling = face.smilingProbability != null && face.smilingProbability! > 0.8;
+          bool isSmiling = FaceService.isSmiling(face);
 
           if (isSmiling) {
             _livenessSuccess = true;
