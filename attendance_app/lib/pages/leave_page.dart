@@ -352,13 +352,13 @@ class _LeavePageState extends State<LeavePage> {
                   const SizedBox(height: 8),
                   _buildDetailRow(
                       Icons.event_available,
-                      "Date Range",
+                      'Date Range',
                       "${DateFormat('MMM dd').format((data['startDate'] as Timestamp).toDate())} - ${DateFormat('MMM dd').format((data['endDate'] as Timestamp).toDate())}"),
                   const SizedBox(height: 8),
-                  _buildDetailRow(Icons.notes, "Reason", reason),
+                  _buildDetailRow(Icons.notes, 'Reason', reason),
                   if (status != 'Pending') ...[
                     const SizedBox(height: 8),
-                    _buildDetailRow(Icons.verified_user_outlined, "Processed By", data['approverName'] ?? 'HR Admin'),
+                    _buildDetailRow(Icons.verified_user_outlined, 'Processed By', data['approverName'] ?? 'HR Admin'),
                   ],
                 ],
               ),

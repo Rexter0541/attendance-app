@@ -476,7 +476,7 @@ class _PayrollPageState extends State<PayrollPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Earned", style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const Text('Earned', style: TextStyle(fontSize: 12, color: Colors.grey)),
               Text('₱${day['finalPay']}', style: const TextStyle(fontWeight: FontWeight.bold, color: primaryColor)),
             ],
           )

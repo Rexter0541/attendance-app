@@ -64,7 +64,7 @@ class _MeetingPageState extends State<MeetingPage> {
         }
       }
 
-      String finalRoomName = "LGU_Meet_$roomCode";
+      String finalRoomName = 'LGU_Meet_$roomCode';
 
       // Check if platform is supported
       if (kIsWeb) {
@@ -83,7 +83,7 @@ class _MeetingPageState extends State<MeetingPage> {
       debugPrint('Log: Attempting to join: "$finalRoomName"');
 
       var options = JitsiMeetConferenceOptions(
-        serverURL: "https://meet.jit.si", // Default Jitsi server
+        serverURL: 'https://meet.jit.si', // Default Jitsi server
         room: finalRoomName,
         configOverrides: {
           'startWithAudioMuted': true,

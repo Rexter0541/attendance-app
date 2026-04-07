@@ -523,7 +523,7 @@ class _HomePageState extends State<HomePage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Status", style: TextStyle(color: Colors.white70, fontSize: 12)),
+              const Text('Status', style: TextStyle(color: Colors.white70, fontSize: 12)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
